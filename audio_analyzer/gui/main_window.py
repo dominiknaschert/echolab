@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QComboBox, QSplitter, QSpinBox, QListWidget,
     QListWidgetItem, QProgressBar,
 )
-from PySide6.QtCore import Qt, QSettings, Signal, Slot, QThread
+from PySide6.QtCore import Qt, QSettings, Signal, Slot, QThread, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 import pyqtgraph as pg
 
@@ -59,6 +59,15 @@ class MainWindow(QMainWindow):
         self._selection_end = 0
         self._bands: list[ThirdOctaveBand] = []
         self._worker: Optional[FilterWorker] = None
+        self._selection_stream = None  # Für Wiedergabe des selektierten Bereichs
+        self._selection_playback_start_time = 0.0  # Startzeit der Wiedergabe
+        self._selection_timer: Optional[QTimer] = None  # Timer für Cursor-Update
+        self._is_playing_selection = False  # Flag für aktive Wiedergabe
+        self._band_stream = None  # Für Wiedergabe des Terzbands
+        self._band_playback_start_time = 0.0  # Startzeit der Terzband-Wiedergabe
+        self._band_timer: Optional[QTimer] = None  # Timer für Terzband-Cursor-Update
+        self._is_playing_band = False  # Flag für aktive Terzband-Wiedergabe
+        self._current_band_duration = 0.0  # Dauer des aktuellen Terzbands
         
         self._init_ui()
         self._apply_theme()
@@ -108,6 +117,24 @@ class MainWindow(QMainWindow):
         waveform_layout = QVBoxLayout(waveform_container)
         waveform_layout.setContentsMargins(0, 0, 0, 0)
         
+        # Buttons oben rechts
+        button_container = QWidget()
+        button_layout = QHBoxLayout(button_container)
+        button_layout.setContentsMargins(8, 8, 8, 8)
+        button_layout.addStretch()
+        
+        self.btn_play_selection = QPushButton("▶ Abspielen")
+        self.btn_play_selection.clicked.connect(self._play_selection)
+        self.btn_play_selection.setEnabled(False)
+        button_layout.addWidget(self.btn_play_selection)
+        
+        self.btn_stop_selection = QPushButton("■ Stop")
+        self.btn_stop_selection.clicked.connect(self._stop_selection_playback)
+        self.btn_stop_selection.setEnabled(False)
+        button_layout.addWidget(self.btn_stop_selection)
+        
+        waveform_layout.addWidget(button_container)
+        
         self.waveform_plot = pg.PlotWidget(title="Zeitbereich")
         self.waveform_plot.setBackground('#1e1e2e')
         self.waveform_plot.showGrid(x=True, y=True, alpha=0.3)
@@ -122,6 +149,16 @@ class MainWindow(QMainWindow):
         self.waveform_plot.getPlotItem().setMenuEnabled(False)
         self.waveform_curve = self.waveform_plot.plot(pen=pg.mkPen('#89b4fa', width=1))
         
+        # Playback-Cursor für Wiedergabe
+        self.playback_cursor = pg.InfiniteLine(
+            pos=0,
+            angle=90,
+            pen=pg.mkPen('#f38ba8', width=2),
+            movable=False
+        )
+        self.playback_cursor.setVisible(False)  # Initial versteckt
+        self.waveform_plot.addItem(self.playback_cursor)
+        
         # Selektion-Region
         self.selection_region = pg.LinearRegionItem(
             values=[0, 1],
@@ -133,10 +170,13 @@ class MainWindow(QMainWindow):
         
         waveform_layout.addWidget(self.waveform_plot)
         
-        # Einfache Info-Zeile
+        # Info-Zeile (nur Selektion)
+        selection_info_layout = QHBoxLayout()
         self.selection_label = QLabel("Selektion: - ")
         self.selection_label.setStyleSheet("padding: 4px 8px; font-family: monospace; background: #181825; border-radius: 4px;")
-        waveform_layout.addWidget(self.selection_label)
+        selection_info_layout.addWidget(self.selection_label)
+        selection_info_layout.addStretch()
+        waveform_layout.addLayout(selection_info_layout)
         
         splitter.addWidget(waveform_container)
         
@@ -159,9 +199,18 @@ class MainWindow(QMainWindow):
         self.spectro_img = pg.ImageItem()
         self.spectro_plot.addItem(self.spectro_img)
         
-        # Colormap
-        cmap = pg.colormap.get('viridis')
-        self.spectro_img.setColorMap(cmap)
+        # Akustik-spezifische Colormap (blau-grün-gelb-rot für bessere Sichtbarkeit)
+        self._create_acoustic_colormap()
+        
+        # Playback-Cursor für Wiedergabe (synchron mit Waveform)
+        self.spectro_cursor = pg.InfiniteLine(
+            pos=0,
+            angle=90,
+            pen=pg.mkPen('#f38ba8', width=2),
+            movable=False
+        )
+        self.spectro_cursor.setVisible(False)  # Initial versteckt
+        self.spectro_plot.addItem(self.spectro_cursor)
         
         spectro_layout.addWidget(self.spectro_plot)
         
@@ -204,6 +253,9 @@ class MainWindow(QMainWindow):
         # Rechtsklick-Menü deaktivieren
         self.fft_plot.getPlotItem().setMenuEnabled(False)
         self.fft_curve = self.fft_plot.plot(pen=pg.mkPen('#a6e3a1', width=1.5))
+        
+        # Professionelle Frequenzmarkierungen für X-Achse
+        self._setup_fft_axis_ticks()
         
         tab2_layout.addWidget(self.fft_plot, stretch=1)
         
@@ -269,6 +321,16 @@ class MainWindow(QMainWindow):
         self.impulse_plot.getPlotItem().setMenuEnabled(False)
         self.impulse_curve = self.impulse_plot.plot(pen=pg.mkPen('#f38ba8', width=1))
         self.envelope_curve = self.impulse_plot.plot(pen=pg.mkPen('#fab387', width=2))
+        
+        # Playback-Cursor für Terzband-Wiedergabe
+        self.band_cursor = pg.InfiniteLine(
+            pos=0,
+            angle=90,
+            pen=pg.mkPen('#f38ba8', width=2),
+            movable=False
+        )
+        self.band_cursor.setVisible(False)  # Initial versteckt
+        self.impulse_plot.addItem(self.band_cursor)
         terz_splitter.addWidget(self.impulse_plot)
         
         terz_splitter.setSizes([150, 600])
@@ -279,7 +341,7 @@ class MainWindow(QMainWindow):
         # Statusbar
         self.statusBar = QStatusBar()
         self.setStatusBar(self.statusBar)
-        self.status_label = QLabel("Bereit")
+        self.status_label = QLabel("")
         self.statusBar.addWidget(self.status_label)
         
         # Tab-Wechsel Handler
@@ -370,6 +432,37 @@ class MainWindow(QMainWindow):
             }
         """)
     
+    def _setup_fft_axis_ticks(self):
+        """Initialisiere professionelle Frequenzmarkierungen für FFT-Plot."""
+        # Standard-Frequenzen für professionelle akustische Plots (bis 16 kHz)
+        self._standard_freqs = [20, 31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
+    
+    def _format_fft_frequency(self, hz: float) -> str:
+        """Formatiere Frequenz für FFT-Achse: '1 kHz' statt '1.0 kHz'."""
+        if hz >= 1000:
+            # Keine Dezimalstellen für kHz
+            return f"{int(hz/1000)} kHz"
+        else:
+            return f"{int(hz)} Hz"
+    
+    def _update_fft_axis_ticks(self, f_max: float):
+        """Aktualisiere Frequenzmarkierungen basierend auf dem Frequenzbereich."""
+        # Begrenze auf 16 kHz
+        f_max = min(f_max, 16000)
+        
+        # Wähle relevante Frequenzen im aktuellen Bereich
+        relevant_freqs = [f for f in self._standard_freqs if 20 <= f <= f_max]
+        
+        # Erstelle Ticks mit logarithmischen Positionen
+        ticks = []
+        for freq in relevant_freqs:
+            log_pos = np.log10(freq)
+            ticks.append((log_pos, self._format_fft_frequency(freq)))
+        
+        # Setze Ticks auf X-Achse
+        x_axis = self.fft_plot.getAxis('bottom')
+        x_axis.setTicks([ticks])
+    
     def _open_file(self):
         """Datei öffnen Dialog."""
         filename, _ = QFileDialog.getOpenFileName(
@@ -408,6 +501,10 @@ class MainWindow(QMainWindow):
             self.selection_region.setBounds([0, self._audio.duration_seconds])
             self.selection_region.setRegion([0, self._audio.duration_seconds])
             
+            # Cursor zurücksetzen
+            self.playback_cursor.setValue(0)
+            self.spectro_cursor.setValue(0)
+            
             # Spektrogramm berechnen
             self._update_spectrogram()
             
@@ -419,12 +516,37 @@ class MainWindow(QMainWindow):
                 f"{format_time(self._audio.duration_seconds)}"
             )
             self.btn_analyze.setEnabled(True)
-            self.status_label.setText("Bereit")
+            self.btn_play_selection.setEnabled(True)
+            self.status_label.setText("")
             self._bands = []
             self.band_list.clear()
             
         except Exception as e:
             QMessageBox.critical(self, "Fehler", f"Konnte Datei nicht laden:\n{e}")
+    
+    def _create_acoustic_colormap(self):
+        """Erstelle klassische Spektrogramm-Colormap (jet-ähnlich) wie in pyqtgraph-spectrographer."""
+        # Versuche zuerst die eingebaute "jet" Colormap von pyqtgraph zu verwenden
+        try:
+            cmap = pg.colormap.get('jet')
+            self.spectro_img.setColorMap(cmap)
+        except:
+            # Fallback: Benutzerdefinierte "jet"-ähnliche Colormap
+            # Klassische "jet" Colormap für Spektrogramme: blau -> cyan -> grün -> gelb -> rot
+            # Optimiert für akustische Analysen mit guter Frequenzauflösung
+            colors = [
+                (0.0, (0, 0, 128)),         # Dunkelblau (sehr leise)
+                (0.25, (0, 0, 255)),        # Blau (leise)
+                (0.5, (0, 255, 255)),       # Cyan (mittel)
+                (0.75, (255, 255, 0)),      # Gelb (laut)
+                (1.0, (255, 0, 0)),         # Rot (sehr laut)
+            ]
+            
+            positions = [c[0] for c in colors]
+            rgb_colors = [c[1] for c in colors]
+            
+            cmap = pg.ColorMap(positions, rgb_colors)
+            self.spectro_img.setColorMap(cmap)
     
     def _update_spectrogram(self):
         """Spektrogramm berechnen und anzeigen."""
@@ -432,15 +554,17 @@ class MainWindow(QMainWindow):
             return
         
         data = self._audio.get_channel(0)
-        # Hohe Auflösung: 8192 FFT, 93.75% Overlap für schärfere Darstellung
-        config = SpectrogramConfig(fft_size=8192, overlap_percent=93.75)
+        # Sehr hohe Auflösung für akustische Analysen: 16384 FFT, 95% Overlap
+        config = SpectrogramConfig(fft_size=16384, overlap_percent=95.0)
         result = compute_spectrogram(data, self._audio.sample_rate, config)
         
-        # dB konvertieren
-        magnitude_db = result.magnitude_db(min_db=-80)
+        # dB konvertieren mit erweitertem Bereich für bessere Dynamik
+        db_min = -100  # Erweiterter Bereich für bessere Sichtbarkeit
+        db_max = 0
+        magnitude_db = result.magnitude_db(min_db=db_min)
         
-        # Auf uint8 für pyqtgraph konvertieren (0-255)
-        img_data = (magnitude_db + 80) / 80  # 0-1
+        # Auf uint8 für pyqtgraph konvertieren (0-255) mit erweitertem dB-Bereich
+        img_data = (magnitude_db - db_min) / (db_max - db_min)  # 0-1
         img_data = np.clip(img_data, 0, 1)
         img_uint8 = (img_data * 255).astype(np.uint8)
         
@@ -455,6 +579,9 @@ class MainWindow(QMainWindow):
         tr = pg.QtGui.QTransform()
         tr.scale(time_max / img_uint8.shape[1], freq_max / img_uint8.shape[0])
         self.spectro_img.setTransform(tr)
+        
+        # Levels für bessere Darstellung setzen
+        self.spectro_img.setLevels([0, 255])
         
         self.spectro_plot.setXRange(0, self._audio.duration_seconds)
         self.spectro_plot.setYRange(0, min(self._audio.sample_rate / 2, 20000))
@@ -477,6 +604,12 @@ class MainWindow(QMainWindow):
             f"{format_time(self._selection_end)} "
             f"({format_time(duration)} | {end_samples - start_samples:,} Samples)"
         )
+        
+        # Play-Button aktivieren wenn gültige Selektion
+        if self._audio is not None and duration > 0.01:
+            self.btn_play_selection.setEnabled(True)
+        else:
+            self.btn_play_selection.setEnabled(False)
         
         # FFT aktualisieren wenn Tab aktiv
         if self.tabs.currentIndex() == 1:
@@ -544,8 +677,12 @@ class MainWindow(QMainWindow):
         
         # Plot
         self.fft_curve.setData(freqs[1:], magnitude_db[1:])  # Ohne DC
-        self.fft_plot.setXRange(np.log10(20), np.log10(self._audio.sample_rate / 2))
+        f_max = min(self._audio.sample_rate / 2, 16000)  # Max 16 kHz für Audio
+        self.fft_plot.setXRange(np.log10(20), np.log10(f_max))
         self.fft_plot.setYRange(-80, 0)
+        
+        # Professionelle Frequenzmarkierungen aktualisieren
+        self._update_fft_axis_ticks(f_max)
         
         # Info
         self.fft_info.setText(
@@ -621,6 +758,10 @@ class MainWindow(QMainWindow):
         envelope = band.envelope(method="hilbert")
         self.envelope_curve.setData(time, envelope)
         
+        # Cursor zurücksetzen (wenn nicht gerade abgespielt wird)
+        if not self._is_playing_band:
+            self.band_cursor.setValue(0)
+        
         # Titel
         self.impulse_plot.setTitle(
             f"Terzband {format_frequency(band.center_frequency)} | "
@@ -635,31 +776,189 @@ class MainWindow(QMainWindow):
         
         band = self._bands[row]
         
+        # Stoppe vorherige Wiedergabe
+        self._stop_playback()
+        
         try:
             import sounddevice as sd
+            import time
             
             # Stop falls schon was läuft
             sd.stop()
             
             # Abspielen
-            sd.play(band.filtered_signal.astype(np.float32), band.sample_rate)
+            self._band_stream = sd.play(band.filtered_signal.astype(np.float32), band.sample_rate)
+            self._band_playback_start_time = time.time()
+            self._is_playing_band = True
+            self._current_band_duration = len(band.filtered_signal) / band.sample_rate
+            
+            # Cursor auf Startposition setzen
+            self.band_cursor.setValue(0)
+            self.band_cursor.setVisible(True)
+            
+            # Timer für Cursor-Update starten
+            if self._band_timer is None:
+                self._band_timer = QTimer()
+                self._band_timer.timeout.connect(self._update_band_cursor)
+            self._band_timer.start(50)  # 20 FPS - ausreichend flüssig, weniger CPU-Last
             
             self.btn_stop.setEnabled(True)
             self.status_label.setText(f"▶ Spiele {format_frequency(band.center_frequency)}...")
             
         except Exception as e:
             QMessageBox.warning(self, "Wiedergabe-Fehler", str(e))
+            self._stop_playback()
     
     def _stop_playback(self):
         """Wiedergabe stoppen."""
+        self._is_playing_band = False
+        
         try:
             import sounddevice as sd
             sd.stop()
+            self._band_stream = None
         except:
             pass
         
+        # Timer stoppen
+        if self._band_timer:
+            self._band_timer.stop()
+        
+        # Cursor zurücksetzen und verstecken
+        self.band_cursor.setValue(0)
+        self.band_cursor.setVisible(False)
+        
         self.btn_stop.setEnabled(False)
-        self.status_label.setText("Bereit")
+        self.status_label.setText("")
+    
+    def _update_band_cursor(self):
+        """Cursor während Terzband-Wiedergabe aktualisieren."""
+        if not self._is_playing_band:
+            return
+        
+        try:
+            import time
+            
+            # Position basierend auf verstrichener Zeit berechnen
+            elapsed = time.time() - self._band_playback_start_time
+            current_time = elapsed
+            
+            # Cursor aktualisieren
+            if current_time <= self._current_band_duration:
+                self.band_cursor.setValue(current_time)
+            else:
+                # Ende erreicht - automatisch stoppen
+                self._stop_playback()
+                
+        except Exception as e:
+            # Bei Fehler stoppen
+            print(f"Band cursor update error: {e}")
+            self._stop_playback()
+    
+    def _play_selection(self):
+        """Selektierten Bereich abspielen."""
+        if self._audio is None:
+            return
+        
+        # Stoppe vorherige Wiedergabe
+        self._stop_selection_playback()
+        
+        try:
+            import sounddevice as sd
+            
+            # Selektierten Bereich holen
+            start_sample = int(self._selection_start * self._audio.sample_rate)
+            end_sample = int(self._selection_end * self._audio.sample_rate)
+            
+            if end_sample <= start_sample:
+                return
+            
+            # Daten extrahieren
+            if self._audio.channels == 1:
+                data = self._audio.data[start_sample:end_sample]
+            else:
+                # Stereo: beide Kanäle
+                data = self._audio.data[start_sample:end_sample]
+            
+            # Abspielen
+            import time
+            self._selection_stream = sd.play(data.astype(np.float32), self._audio.sample_rate)
+            self._selection_playback_start_time = time.time()
+            self._is_playing_selection = True
+            
+            # Cursor auf Startposition setzen
+            self.playback_cursor.setValue(self._selection_start)
+            self.spectro_cursor.setValue(self._selection_start)
+            self.playback_cursor.setVisible(True)
+            self.spectro_cursor.setVisible(True)
+            
+            # Timer für Cursor-Update starten
+            if self._selection_timer is None:
+                self._selection_timer = QTimer()
+                self._selection_timer.timeout.connect(self._update_playback_cursor)
+            self._selection_timer.start(50)  # 20 FPS - ausreichend flüssig, weniger CPU-Last
+            
+            # UI aktualisieren
+            self.btn_play_selection.setEnabled(False)
+            self.btn_stop_selection.setEnabled(True)
+            duration = self._selection_end - self._selection_start
+            self.status_label.setText(f"▶ Wiedergabe selektierter Bereich ({format_time(duration)})")
+            
+        except Exception as e:
+            QMessageBox.warning(self, "Wiedergabe-Fehler", str(e))
+            self._stop_selection_playback()
+    
+    def _stop_selection_playback(self):
+        """Wiedergabe des selektierten Bereichs stoppen."""
+        self._is_playing_selection = False
+        
+        try:
+            import sounddevice as sd
+            sd.stop()
+            self._selection_stream = None
+        except:
+            pass
+        
+        # Timer stoppen
+        if self._selection_timer:
+            self._selection_timer.stop()
+        
+        # Cursor zurücksetzen und verstecken
+        if self._audio is not None:
+            self.playback_cursor.setValue(self._selection_start)
+            self.spectro_cursor.setValue(self._selection_start)
+        self.playback_cursor.setVisible(False)
+        self.spectro_cursor.setVisible(False)
+        
+        # UI aktualisieren
+        self.btn_play_selection.setEnabled(True)
+        self.btn_stop_selection.setEnabled(False)
+        self.status_label.setText("")
+    
+    def _update_playback_cursor(self):
+        """Cursor während Wiedergabe aktualisieren."""
+        if not self._is_playing_selection or self._audio is None:
+            return
+        
+        try:
+            import time
+            
+            # Position basierend auf verstrichener Zeit berechnen
+            elapsed = time.time() - self._selection_playback_start_time
+            current_time = self._selection_start + elapsed
+            
+            # Cursor aktualisieren (synchron in beiden Plots)
+            if current_time <= self._selection_end:
+                self.playback_cursor.setValue(current_time)
+                self.spectro_cursor.setValue(current_time)
+            else:
+                # Ende des selektierten Bereichs erreicht - automatisch stoppen
+                self._stop_selection_playback()
+                
+        except Exception as e:
+            # Bei Fehler stoppen
+            print(f"Cursor update error: {e}")
+            self._stop_selection_playback()
     
     def _export_band(self):
         """Ausgewähltes Band exportieren."""
@@ -702,6 +1001,13 @@ class MainWindow(QMainWindow):
         """Beim Schließen."""
         # Wiedergabe stoppen
         self._stop_playback()
+        self._stop_selection_playback()
+        
+        # Timer stoppen
+        if self._selection_timer:
+            self._selection_timer.stop()
+        if self._band_timer:
+            self._band_timer.stop()
         
         # Worker beenden
         if self._worker and self._worker.isRunning():
