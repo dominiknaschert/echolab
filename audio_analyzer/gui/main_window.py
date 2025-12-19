@@ -1,0 +1,710 @@
+"""
+Hauptfenster der Audio Analyzer Anwendung - Vereinfachte Version
+
+Struktur:
+- Tab 1: Zeitbereich (groß) + Spektrogramm
+- Tab 2: FFT-Analyse des selektierten Bereichs
+- Tab 3: Terzband-Impulsantworten
+"""
+
+from typing import Optional
+from pathlib import Path
+import numpy as np
+from PySide6.QtWidgets import (
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QTabWidget, QFileDialog, QMessageBox, QLabel,
+    QStatusBar, QApplication, QPushButton, QFrame,
+    QComboBox, QSplitter, QSpinBox, QListWidget,
+    QListWidgetItem, QProgressBar,
+)
+from PySide6.QtCore import Qt, QSettings, Signal, Slot, QThread
+from PySide6.QtGui import QAction, QKeySequence
+import pyqtgraph as pg
+
+from ..core.audio_io import AudioFile, load_audio, save_audio
+from ..core.spectral import compute_spectrogram, SpectrogramConfig
+from ..core.third_octave import ThirdOctaveFilterbank, ThirdOctaveBand
+from ..utils.formatting import format_time, format_frequency, format_db
+
+
+class FilterWorker(QThread):
+    """Worker für Terzband-Berechnung im Hintergrund."""
+    finished = Signal(list)
+    progress = Signal(int, int)
+    
+    def __init__(self, data, sample_rate):
+        super().__init__()
+        self.data = data
+        self.sample_rate = sample_rate
+    
+    def run(self):
+        fb = ThirdOctaveFilterbank(self.sample_rate)
+        bands = []
+        total = len(fb.center_frequencies)
+        for i, fc in enumerate(fb.center_frequencies):
+            band = fb.filter_single_band(self.data, fc)
+            bands.append(band)
+            self.progress.emit(i + 1, total)
+        self.finished.emit(bands)
+
+
+class MainWindow(QMainWindow):
+    """Vereinfachtes Hauptfenster."""
+    
+    def __init__(self):
+        super().__init__()
+        
+        self._audio: Optional[AudioFile] = None
+        self._selection_start = 0
+        self._selection_end = 0
+        self._bands: list[ThirdOctaveBand] = []
+        self._worker: Optional[FilterWorker] = None
+        
+        self._init_ui()
+        self._apply_theme()
+    
+    def _init_ui(self):
+        """UI aufbauen."""
+        self.setWindowTitle("Audio Analyzer")
+        self.setMinimumSize(1000, 700)
+        
+        # Zentrales Widget
+        central = QWidget()
+        self.setCentralWidget(central)
+        layout = QVBoxLayout(central)
+        layout.setContentsMargins(8, 8, 8, 8)
+        
+        # Toolbar oben
+        toolbar = QFrame()
+        toolbar_layout = QHBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(0, 0, 0, 8)
+        
+        btn_open = QPushButton("Import")
+        btn_open.clicked.connect(self._open_file)
+        toolbar_layout.addWidget(btn_open)
+        
+        toolbar_layout.addStretch()
+        
+        self.file_label = QLabel("Keine Datei geladen")
+        self.file_label.setStyleSheet("color: #888;")
+        toolbar_layout.addWidget(self.file_label)
+        
+        layout.addWidget(toolbar)
+        
+        # Tab Widget
+        self.tabs = QTabWidget()
+        layout.addWidget(self.tabs, stretch=1)
+        
+        # === Tab 1: Zeitbereich + Spektrogramm ===
+        tab1 = QWidget()
+        tab1_layout = QVBoxLayout(tab1)
+        tab1_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Splitter für Waveform und Spektrogramm
+        splitter = QSplitter(Qt.Orientation.Vertical)
+        
+        # Waveform Plot (groß)
+        waveform_container = QWidget()
+        waveform_layout = QVBoxLayout(waveform_container)
+        waveform_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.waveform_plot = pg.PlotWidget(title="Zeitbereich")
+        self.waveform_plot.setBackground('#1e1e2e')
+        self.waveform_plot.showGrid(x=True, y=True, alpha=0.3)
+        self.waveform_plot.setLabel('left', 'Amplitude')
+        self.waveform_plot.setLabel('bottom', 'Zeit', units='s')
+        # NUR X-Achse zoombar, Y-Achse gelockt
+        self.waveform_plot.setMouseEnabled(x=True, y=False)
+        self.waveform_plot.setYRange(-1, 1)
+        # Feste Y-Achsenbreite für Ausrichtung mit Spektrogramm
+        self.waveform_plot.getAxis('left').setWidth(60)
+        # Rechtsklick-Menü deaktivieren
+        self.waveform_plot.getPlotItem().setMenuEnabled(False)
+        self.waveform_curve = self.waveform_plot.plot(pen=pg.mkPen('#89b4fa', width=1))
+        
+        # Selektion-Region
+        self.selection_region = pg.LinearRegionItem(
+            values=[0, 1],
+            brush=pg.mkBrush(137, 180, 250, 50),
+            pen=pg.mkPen('#89b4fa', width=2),
+        )
+        self.selection_region.sigRegionChanged.connect(self._on_selection_changed)
+        self.waveform_plot.addItem(self.selection_region)
+        
+        waveform_layout.addWidget(self.waveform_plot)
+        
+        # Einfache Info-Zeile
+        self.selection_label = QLabel("Selektion: - ")
+        self.selection_label.setStyleSheet("padding: 4px 8px; font-family: monospace; background: #181825; border-radius: 4px;")
+        waveform_layout.addWidget(self.selection_label)
+        
+        splitter.addWidget(waveform_container)
+        
+        # Spektrogramm Plot
+        spectro_container = QWidget()
+        spectro_layout = QVBoxLayout(spectro_container)
+        spectro_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.spectro_plot = pg.PlotWidget(title="Spektrogramm")
+        self.spectro_plot.setBackground('#1e1e2e')
+        self.spectro_plot.setLabel('left', 'Frequenz', units='Hz')
+        self.spectro_plot.setLabel('bottom', 'Zeit', units='s')
+        # NUR X-Achse zoombar (synchron mit Waveform), Y-Achse gelockt
+        self.spectro_plot.setMouseEnabled(x=True, y=False)
+        # Feste Y-Achsenbreite für Ausrichtung mit Waveform
+        self.spectro_plot.getAxis('left').setWidth(60)
+        # Rechtsklick-Menü deaktivieren
+        self.spectro_plot.getPlotItem().setMenuEnabled(False)
+        
+        self.spectro_img = pg.ImageItem()
+        self.spectro_plot.addItem(self.spectro_img)
+        
+        # Colormap
+        cmap = pg.colormap.get('viridis')
+        self.spectro_img.setColorMap(cmap)
+        
+        spectro_layout.addWidget(self.spectro_plot)
+        
+        splitter.addWidget(spectro_container)
+        splitter.setSizes([350, 250])
+        
+        tab1_layout.addWidget(splitter)
+        self.tabs.addTab(tab1, "Zeitbereich & Spektrogramm")
+        
+        # === Tab 2: FFT Analyse ===
+        tab2 = QWidget()
+        tab2_layout = QVBoxLayout(tab2)
+        tab2_layout.setContentsMargins(8, 8, 8, 8)
+        
+        # FFT Controls
+        fft_controls = QHBoxLayout()
+        fft_controls.addWidget(QLabel("FFT-Größe:"))
+        self.fft_size_combo = QComboBox()
+        self.fft_size_combo.addItems(["1024", "2048", "4096", "8192", "16384"])
+        self.fft_size_combo.setCurrentText("4096")
+        self.fft_size_combo.currentTextChanged.connect(self._update_fft)
+        fft_controls.addWidget(self.fft_size_combo)
+        
+        fft_controls.addWidget(QLabel("Fenster:"))
+        self.window_combo = QComboBox()
+        self.window_combo.addItems(["hann", "hamming", "blackman", "rectangular"])
+        self.window_combo.currentTextChanged.connect(self._update_fft)
+        fft_controls.addWidget(self.window_combo)
+        
+        fft_controls.addStretch()
+        tab2_layout.addLayout(fft_controls)
+        
+        # FFT Plot
+        self.fft_plot = pg.PlotWidget(title="FFT - Magnitude Spektrum (selektierter Bereich)")
+        self.fft_plot.setBackground('#1e1e2e')
+        self.fft_plot.showGrid(x=True, y=True, alpha=0.3)
+        self.fft_plot.setLabel('left', 'Magnitude', units='dB')
+        self.fft_plot.setLabel('bottom', 'Frequenz', units='Hz')
+        self.fft_plot.setLogMode(x=True, y=False)
+        # Rechtsklick-Menü deaktivieren
+        self.fft_plot.getPlotItem().setMenuEnabled(False)
+        self.fft_curve = self.fft_plot.plot(pen=pg.mkPen('#a6e3a1', width=1.5))
+        
+        tab2_layout.addWidget(self.fft_plot, stretch=1)
+        
+        self.fft_info = QLabel("Wählen Sie einen Bereich im Zeitbereich-Tab")
+        self.fft_info.setStyleSheet("padding: 8px; font-family: monospace;")
+        tab2_layout.addWidget(self.fft_info)
+        
+        self.tabs.addTab(tab2, "FFT Analyse")
+        
+        # === Tab 3: Terzband-Impulsantworten ===
+        tab3 = QWidget()
+        tab3_layout = QVBoxLayout(tab3)
+        tab3_layout.setContentsMargins(8, 8, 8, 8)
+        
+        # Controls
+        terz_controls = QHBoxLayout()
+        
+        self.btn_analyze = QPushButton("▶ Terzbandanalyse starten")
+        self.btn_analyze.clicked.connect(self._start_analysis)
+        self.btn_analyze.setEnabled(False)
+        terz_controls.addWidget(self.btn_analyze)
+        
+        self.progress = QProgressBar()
+        self.progress.setMaximumWidth(200)
+        self.progress.hide()
+        terz_controls.addWidget(self.progress)
+        
+        terz_controls.addStretch()
+        
+        self.btn_play = QPushButton("▶ Abspielen")
+        self.btn_play.clicked.connect(self._play_band)
+        self.btn_play.setEnabled(False)
+        terz_controls.addWidget(self.btn_play)
+        
+        self.btn_stop = QPushButton("■ Stop")
+        self.btn_stop.clicked.connect(self._stop_playback)
+        self.btn_stop.setEnabled(False)
+        terz_controls.addWidget(self.btn_stop)
+        
+        self.btn_export = QPushButton("💾 Exportieren")
+        self.btn_export.clicked.connect(self._export_band)
+        self.btn_export.setEnabled(False)
+        terz_controls.addWidget(self.btn_export)
+        
+        tab3_layout.addLayout(terz_controls)
+        
+        # Splitter für Liste und Plot
+        terz_splitter = QSplitter(Qt.Orientation.Horizontal)
+        
+        # Bandliste
+        self.band_list = QListWidget()
+        self.band_list.setMaximumWidth(180)
+        self.band_list.currentRowChanged.connect(self._on_band_selected)
+        terz_splitter.addWidget(self.band_list)
+        
+        # Impulsantwort Plot
+        self.impulse_plot = pg.PlotWidget(title="Terzband-Impulsantwort")
+        self.impulse_plot.setBackground('#1e1e2e')
+        self.impulse_plot.showGrid(x=True, y=True, alpha=0.3)
+        self.impulse_plot.setLabel('left', 'Amplitude')
+        self.impulse_plot.setLabel('bottom', 'Zeit', units='s')
+        # Rechtsklick-Menü deaktivieren
+        self.impulse_plot.getPlotItem().setMenuEnabled(False)
+        self.impulse_curve = self.impulse_plot.plot(pen=pg.mkPen('#f38ba8', width=1))
+        self.envelope_curve = self.impulse_plot.plot(pen=pg.mkPen('#fab387', width=2))
+        terz_splitter.addWidget(self.impulse_plot)
+        
+        terz_splitter.setSizes([150, 600])
+        tab3_layout.addWidget(terz_splitter, stretch=1)
+        
+        self.tabs.addTab(tab3, "Terzband-Impulsantworten")
+        
+        # Statusbar
+        self.statusBar = QStatusBar()
+        self.setStatusBar(self.statusBar)
+        self.status_label = QLabel("Bereit")
+        self.statusBar.addWidget(self.status_label)
+        
+        # Tab-Wechsel Handler
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+        
+        # View-Synchronisation: Beide Plots immer synchron
+        self._syncing = False  # Verhindert Endlosschleife
+        self.waveform_plot.sigXRangeChanged.connect(self._sync_from_waveform)
+        self.spectro_plot.sigXRangeChanged.connect(self._sync_from_spectro)
+        
+        # Drag & Drop
+        self.setAcceptDrops(True)
+    
+    def _apply_theme(self):
+        """Dark theme."""
+        self.setStyleSheet("""
+            QMainWindow, QWidget {
+                background-color: #1e1e2e;
+                color: #cdd6f4;
+                font-family: 'SF Pro Display', 'Segoe UI', sans-serif;
+            }
+            QPushButton {
+                background-color: #313244;
+                color: #cdd6f4;
+                border: 1px solid #45475a;
+                padding: 8px 16px;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #45475a;
+                border-color: #89b4fa;
+            }
+            QPushButton:disabled {
+                background-color: #181825;
+                color: #585b70;
+            }
+            QComboBox {
+                background-color: #313244;
+                color: #cdd6f4;
+                border: 1px solid #45475a;
+                padding: 6px 12px;
+                border-radius: 4px;
+            }
+            QTabWidget::pane {
+                border: 1px solid #45475a;
+                background-color: #1e1e2e;
+                border-radius: 6px;
+            }
+            QTabBar::tab {
+                background-color: #313244;
+                color: #a6adc8;
+                padding: 10px 20px;
+                border: 1px solid #45475a;
+                border-bottom: none;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                background-color: #1e1e2e;
+                color: #89b4fa;
+                border-bottom: 2px solid #89b4fa;
+            }
+            QListWidget {
+                background-color: #313244;
+                border: 1px solid #45475a;
+                border-radius: 4px;
+            }
+            QListWidget::item {
+                padding: 6px;
+            }
+            QListWidget::item:selected {
+                background-color: #89b4fa;
+                color: #1e1e2e;
+            }
+            QProgressBar {
+                background-color: #313244;
+                border: 1px solid #45475a;
+                border-radius: 4px;
+                text-align: center;
+            }
+            QProgressBar::chunk {
+                background-color: #89b4fa;
+            }
+            QSplitter::handle {
+                background-color: #45475a;
+            }
+            QStatusBar {
+                background-color: #181825;
+            }
+        """)
+    
+    def _open_file(self):
+        """Datei öffnen Dialog."""
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Audiodatei öffnen", "",
+            "Audio (*.wav *.mp3);;Alle Dateien (*)"
+        )
+        if filename:
+            self._load_file(filename)
+    
+    def _load_file(self, filepath: str):
+        """Audiodatei laden."""
+        try:
+            self.status_label.setText(f"Lade {Path(filepath).name}...")
+            QApplication.processEvents()
+            
+            self._audio = load_audio(filepath)
+            
+            # Waveform anzeigen
+            data = self._audio.get_channel(0)  # Linker Kanal / Mono
+            time = np.arange(len(data)) / self._audio.sample_rate
+            
+            # Downsampling für Anzeige
+            if len(data) > 50000:
+                factor = len(data) // 50000
+                data_ds = data[::factor]
+                time_ds = time[::factor]
+                self.waveform_curve.setData(time_ds, data_ds)
+            else:
+                self.waveform_curve.setData(time, data)
+            
+            # Achsen setzen
+            self.waveform_plot.setXRange(0, self._audio.duration_seconds)
+            self.waveform_plot.setYRange(-1, 1)
+            
+            # Selektion auf ganzen Bereich + Grenzen setzen
+            self.selection_region.setBounds([0, self._audio.duration_seconds])
+            self.selection_region.setRegion([0, self._audio.duration_seconds])
+            
+            # Spektrogramm berechnen
+            self._update_spectrogram()
+            
+            # UI updaten
+            self.file_label.setText(
+                f"{self._audio.file_path.name} | "
+                f"{self._audio.sample_rate} Hz | "
+                f"{'Stereo' if self._audio.channels == 2 else 'Mono'} | "
+                f"{format_time(self._audio.duration_seconds)}"
+            )
+            self.btn_analyze.setEnabled(True)
+            self.status_label.setText("Bereit")
+            self._bands = []
+            self.band_list.clear()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Fehler", f"Konnte Datei nicht laden:\n{e}")
+    
+    def _update_spectrogram(self):
+        """Spektrogramm berechnen und anzeigen."""
+        if self._audio is None:
+            return
+        
+        data = self._audio.get_channel(0)
+        # Hohe Auflösung: 8192 FFT, 93.75% Overlap für schärfere Darstellung
+        config = SpectrogramConfig(fft_size=8192, overlap_percent=93.75)
+        result = compute_spectrogram(data, self._audio.sample_rate, config)
+        
+        # dB konvertieren
+        magnitude_db = result.magnitude_db(min_db=-80)
+        
+        # Auf uint8 für pyqtgraph konvertieren (0-255)
+        img_data = (magnitude_db + 80) / 80  # 0-1
+        img_data = np.clip(img_data, 0, 1)
+        img_uint8 = (img_data * 255).astype(np.uint8)
+        
+        # Image setzen (transponiert: Zeit auf X, Frequenz auf Y)
+        self.spectro_img.setImage(img_uint8.T)
+        
+        # Skalierung auf echte Zeit/Frequenz-Achsen
+        time_max = result.times[-1] if len(result.times) > 0 else 1
+        freq_max = result.frequencies[-1] if len(result.frequencies) > 0 else 1
+        
+        # Transform für korrekte Achsenskalierung
+        tr = pg.QtGui.QTransform()
+        tr.scale(time_max / img_uint8.shape[1], freq_max / img_uint8.shape[0])
+        self.spectro_img.setTransform(tr)
+        
+        self.spectro_plot.setXRange(0, self._audio.duration_seconds)
+        self.spectro_plot.setYRange(0, min(self._audio.sample_rate / 2, 20000))
+    
+    def _on_selection_changed(self):
+        """Selektion geändert."""
+        if self._audio is None:
+            return
+        
+        region = self.selection_region.getRegion()
+        self._selection_start = max(0, region[0])
+        self._selection_end = min(self._audio.duration_seconds, region[1])
+        
+        duration = self._selection_end - self._selection_start
+        start_samples = int(self._selection_start * self._audio.sample_rate)
+        end_samples = int(self._selection_end * self._audio.sample_rate)
+        
+        self.selection_label.setText(
+            f"Selektion: {format_time(self._selection_start)} – "
+            f"{format_time(self._selection_end)} "
+            f"({format_time(duration)} | {end_samples - start_samples:,} Samples)"
+        )
+        
+        # FFT aktualisieren wenn Tab aktiv
+        if self.tabs.currentIndex() == 1:
+            self._update_fft()
+    
+    def _on_tab_changed(self, index: int):
+        """Tab gewechselt."""
+        if index == 1:  # FFT Tab
+            self._update_fft()
+    
+    def _sync_from_waveform(self):
+        """Waveform-Zoom → Spektrogramm synchronisieren."""
+        if self._syncing or self._audio is None:
+            return
+        self._syncing = True
+        view_range = self.waveform_plot.viewRange()
+        self.spectro_plot.setXRange(view_range[0][0], view_range[0][1], padding=0)
+        self._syncing = False
+    
+    def _sync_from_spectro(self):
+        """Spektrogramm-Zoom → Waveform synchronisieren."""
+        if self._syncing or self._audio is None:
+            return
+        self._syncing = True
+        view_range = self.spectro_plot.viewRange()
+        self.waveform_plot.setXRange(view_range[0][0], view_range[0][1], padding=0)
+        self._syncing = False
+    
+    def _update_fft(self):
+        """FFT für selektierten Bereich berechnen."""
+        if self._audio is None:
+            return
+        
+        # Selektierten Bereich holen
+        start_sample = int(self._selection_start * self._audio.sample_rate)
+        end_sample = int(self._selection_end * self._audio.sample_rate)
+        data = self._audio.get_channel(0)[start_sample:end_sample]
+        
+        if len(data) < 64:
+            self.fft_info.setText("Selektion zu kurz für FFT")
+            return
+        
+        # FFT Parameter
+        fft_size = int(self.fft_size_combo.currentText())
+        window_name = self.window_combo.currentText()
+        
+        # Fenster
+        if window_name == "hann":
+            window = np.hanning(len(data))
+        elif window_name == "hamming":
+            window = np.hamming(len(data))
+        elif window_name == "blackman":
+            window = np.blackman(len(data))
+        else:
+            window = np.ones(len(data))
+        
+        # FFT
+        windowed = data * window
+        spectrum = np.fft.rfft(windowed, n=fft_size)
+        magnitude = np.abs(spectrum)
+        magnitude_db = 20 * np.log10(magnitude + 1e-10)
+        
+        # Frequenzachse
+        freqs = np.fft.rfftfreq(fft_size, 1 / self._audio.sample_rate)
+        
+        # Plot
+        self.fft_curve.setData(freqs[1:], magnitude_db[1:])  # Ohne DC
+        self.fft_plot.setXRange(np.log10(20), np.log10(self._audio.sample_rate / 2))
+        self.fft_plot.setYRange(-80, 0)
+        
+        # Info
+        self.fft_info.setText(
+            f"Samples: {len(data):,} | "
+            f"Frequenzauflösung: {self._audio.sample_rate / fft_size:.2f} Hz"
+        )
+    
+    def _start_analysis(self):
+        """Terzbandanalyse starten."""
+        if self._audio is None:
+            return
+        
+        # Selektierten Bereich holen
+        start_sample = int(self._selection_start * self._audio.sample_rate)
+        end_sample = int(self._selection_end * self._audio.sample_rate)
+        data = self._audio.get_channel(0)[start_sample:end_sample]
+        
+        if len(data) < 1000:
+            QMessageBox.warning(self, "Hinweis", "Selektion zu kurz für Terzbandanalyse")
+            return
+        
+        # UI
+        self.btn_analyze.setEnabled(False)
+        self.progress.show()
+        self.progress.setValue(0)
+        self.status_label.setText("Berechne Terzbänder...")
+        
+        # Worker starten
+        self._worker = FilterWorker(data, self._audio.sample_rate)
+        self._worker.progress.connect(self._on_progress)
+        self._worker.finished.connect(self._on_analysis_done)
+        self._worker.start()
+    
+    @Slot(int, int)
+    def _on_progress(self, current: int, total: int):
+        """Fortschritt aktualisieren."""
+        self.progress.setMaximum(total)
+        self.progress.setValue(current)
+    
+    @Slot(list)
+    def _on_analysis_done(self, bands: list):
+        """Analyse fertig."""
+        self._bands = bands
+        self.btn_analyze.setEnabled(True)
+        self.btn_export.setEnabled(True)
+        self.btn_play.setEnabled(True)
+        self.progress.hide()
+        self.status_label.setText(f"Analyse abgeschlossen - {len(bands)} Bänder")
+        
+        # Liste füllen
+        self.band_list.clear()
+        for band in bands:
+            text = f"{format_frequency(band.center_frequency)}"
+            self.band_list.addItem(text)
+        
+        if bands:
+            self.band_list.setCurrentRow(0)
+    
+    def _on_band_selected(self, row: int):
+        """Terzband ausgewählt."""
+        if row < 0 or row >= len(self._bands):
+            return
+        
+        band = self._bands[row]
+        
+        # Zeit
+        time = np.arange(len(band.filtered_signal)) / band.sample_rate
+        
+        # Signal plotten
+        self.impulse_curve.setData(time, band.filtered_signal)
+        
+        # Hüllkurve
+        envelope = band.envelope(method="hilbert")
+        self.envelope_curve.setData(time, envelope)
+        
+        # Titel
+        self.impulse_plot.setTitle(
+            f"Terzband {format_frequency(band.center_frequency)} | "
+            f"RMS: {format_db(band.rms_db())}"
+        )
+    
+    def _play_band(self):
+        """Ausgewähltes Band abspielen."""
+        row = self.band_list.currentRow()
+        if row < 0 or row >= len(self._bands):
+            return
+        
+        band = self._bands[row]
+        
+        try:
+            import sounddevice as sd
+            
+            # Stop falls schon was läuft
+            sd.stop()
+            
+            # Abspielen
+            sd.play(band.filtered_signal.astype(np.float32), band.sample_rate)
+            
+            self.btn_stop.setEnabled(True)
+            self.status_label.setText(f"▶ Spiele {format_frequency(band.center_frequency)}...")
+            
+        except Exception as e:
+            QMessageBox.warning(self, "Wiedergabe-Fehler", str(e))
+    
+    def _stop_playback(self):
+        """Wiedergabe stoppen."""
+        try:
+            import sounddevice as sd
+            sd.stop()
+        except:
+            pass
+        
+        self.btn_stop.setEnabled(False)
+        self.status_label.setText("Bereit")
+    
+    def _export_band(self):
+        """Ausgewähltes Band exportieren."""
+        row = self.band_list.currentRow()
+        if row < 0 or row >= len(self._bands):
+            return
+        
+        band = self._bands[row]
+        
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Terzband exportieren",
+            f"terzband_{int(band.center_frequency)}Hz.wav",
+            "WAV (*.wav)"
+        )
+        
+        if filename:
+            try:
+                save_audio(band.filtered_signal, filename, band.sample_rate)
+                QMessageBox.information(self, "Export", f"Exportiert nach:\n{filename}")
+            except Exception as e:
+                QMessageBox.critical(self, "Fehler", str(e))
+    
+    def dragEnterEvent(self, event):
+        """Drag & Drop."""
+        if event.mimeData().hasUrls():
+            for url in event.mimeData().urls():
+                if url.toLocalFile().lower().endswith(('.wav', '.mp3')):
+                    event.acceptProposedAction()
+                    return
+    
+    def dropEvent(self, event):
+        """Datei gedroppt."""
+        for url in event.mimeData().urls():
+            filepath = url.toLocalFile()
+            if filepath.lower().endswith(('.wav', '.mp3')):
+                self._load_file(filepath)
+                break
+    
+    def closeEvent(self, event):
+        """Beim Schließen."""
+        # Wiedergabe stoppen
+        self._stop_playback()
+        
+        # Worker beenden
+        if self._worker and self._worker.isRunning():
+            self._worker.quit()
+            self._worker.wait()
+        event.accept()
