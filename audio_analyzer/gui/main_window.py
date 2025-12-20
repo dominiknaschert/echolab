@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QComboBox, QSplitter, QSpinBox, QListWidget,
     QListWidgetItem, QProgressBar,
 )
-from PySide6.QtCore import Qt, QSettings, Signal, Slot, QThread, QTimer
+from PySide6.QtCore import Qt, QSettings, Signal, Slot, QThread
 from PySide6.QtGui import QAction, QKeySequence
 import pyqtgraph as pg
 
@@ -60,14 +60,7 @@ class MainWindow(QMainWindow):
         self._bands: list[ThirdOctaveBand] = []
         self._worker: Optional[FilterWorker] = None
         self._selection_stream = None  # Für Wiedergabe des selektierten Bereichs
-        self._selection_playback_start_time = 0.0  # Startzeit der Wiedergabe
-        self._selection_timer: Optional[QTimer] = None  # Timer für Cursor-Update
-        self._is_playing_selection = False  # Flag für aktive Wiedergabe
         self._band_stream = None  # Für Wiedergabe des Terzbands
-        self._band_playback_start_time = 0.0  # Startzeit der Terzband-Wiedergabe
-        self._band_timer: Optional[QTimer] = None  # Timer für Terzband-Cursor-Update
-        self._is_playing_band = False  # Flag für aktive Terzband-Wiedergabe
-        self._current_band_duration = 0.0  # Dauer des aktuellen Terzbands
         
         self._init_ui()
         self._apply_theme()
@@ -149,16 +142,6 @@ class MainWindow(QMainWindow):
         self.waveform_plot.getPlotItem().setMenuEnabled(False)
         self.waveform_curve = self.waveform_plot.plot(pen=pg.mkPen('#89b4fa', width=1))
         
-        # Playback-Cursor für Wiedergabe
-        self.playback_cursor = pg.InfiniteLine(
-            pos=0,
-            angle=90,
-            pen=pg.mkPen('#f38ba8', width=2),
-            movable=False
-        )
-        self.playback_cursor.setVisible(False)  # Initial versteckt
-        self.waveform_plot.addItem(self.playback_cursor)
-        
         # Selektion-Region
         self.selection_region = pg.LinearRegionItem(
             values=[0, 1],
@@ -201,16 +184,6 @@ class MainWindow(QMainWindow):
         
         # Akustik-spezifische Colormap (blau-grün-gelb-rot für bessere Sichtbarkeit)
         self._create_acoustic_colormap()
-        
-        # Playback-Cursor für Wiedergabe (synchron mit Waveform)
-        self.spectro_cursor = pg.InfiniteLine(
-            pos=0,
-            angle=90,
-            pen=pg.mkPen('#f38ba8', width=2),
-            movable=False
-        )
-        self.spectro_cursor.setVisible(False)  # Initial versteckt
-        self.spectro_plot.addItem(self.spectro_cursor)
         
         spectro_layout.addWidget(self.spectro_plot)
         
@@ -322,15 +295,6 @@ class MainWindow(QMainWindow):
         self.impulse_curve = self.impulse_plot.plot(pen=pg.mkPen('#f38ba8', width=1))
         self.envelope_curve = self.impulse_plot.plot(pen=pg.mkPen('#fab387', width=2))
         
-        # Playback-Cursor für Terzband-Wiedergabe
-        self.band_cursor = pg.InfiniteLine(
-            pos=0,
-            angle=90,
-            pen=pg.mkPen('#f38ba8', width=2),
-            movable=False
-        )
-        self.band_cursor.setVisible(False)  # Initial versteckt
-        self.impulse_plot.addItem(self.band_cursor)
         terz_splitter.addWidget(self.impulse_plot)
         
         terz_splitter.setSizes([150, 600])
@@ -500,10 +464,6 @@ class MainWindow(QMainWindow):
             # Selektion auf ganzen Bereich + Grenzen setzen
             self.selection_region.setBounds([0, self._audio.duration_seconds])
             self.selection_region.setRegion([0, self._audio.duration_seconds])
-            
-            # Cursor zurücksetzen
-            self.playback_cursor.setValue(0)
-            self.spectro_cursor.setValue(0)
             
             # Spektrogramm berechnen
             self._update_spectrogram()
@@ -758,15 +718,48 @@ class MainWindow(QMainWindow):
         envelope = band.envelope(method="hilbert")
         self.envelope_curve.setData(time, envelope)
         
-        # Cursor zurücksetzen (wenn nicht gerade abgespielt wird)
-        if not self._is_playing_band:
-            self.band_cursor.setValue(0)
-        
         # Titel
         self.impulse_plot.setTitle(
             f"Terzband {format_frequency(band.center_frequency)} | "
             f"RMS: {format_db(band.rms_db())}"
         )
+    
+    def _apply_fade(self, data: np.ndarray, sample_rate: int, fade_ms: float = 10.0) -> np.ndarray:
+        """Wende Fade-In und Fade-Out an, um Klicks zu vermeiden."""
+        if len(data) == 0:
+            return data
+        
+        # Anzahl Samples für Fade
+        fade_samples = int(sample_rate * fade_ms / 1000.0)
+        fade_samples = min(fade_samples, len(data) // 2)  # Maximal die Hälfte der Länge
+        
+        if fade_samples < 1:
+            return data
+        
+        # Kopie erstellen
+        faded = data.copy()
+        
+        # Fade-In (erste fade_samples)
+        if len(faded.shape) == 1:
+            # Mono
+            fade_in = np.linspace(0, 1, fade_samples)
+            faded[:fade_samples] *= fade_in
+        else:
+            # Stereo/Multi-Channel
+            fade_in = np.linspace(0, 1, fade_samples)
+            faded[:fade_samples, :] *= fade_in[:, np.newaxis]
+        
+        # Fade-Out (letzte fade_samples)
+        if len(faded.shape) == 1:
+            # Mono
+            fade_out = np.linspace(1, 0, fade_samples)
+            faded[-fade_samples:] *= fade_out
+        else:
+            # Stereo/Multi-Channel
+            fade_out = np.linspace(1, 0, fade_samples)
+            faded[-fade_samples:, :] *= fade_out[:, np.newaxis]
+        
+        return faded
     
     def _play_band(self):
         """Ausgewähltes Band abspielen."""
@@ -781,26 +774,15 @@ class MainWindow(QMainWindow):
         
         try:
             import sounddevice as sd
-            import time
             
             # Stop falls schon was läuft
             sd.stop()
             
+            # Fade-In/Out anwenden um Klicks zu vermeiden
+            faded_data = self._apply_fade(band.filtered_signal, band.sample_rate, fade_ms=10.0)
+            
             # Abspielen
-            self._band_stream = sd.play(band.filtered_signal.astype(np.float32), band.sample_rate)
-            self._band_playback_start_time = time.time()
-            self._is_playing_band = True
-            self._current_band_duration = len(band.filtered_signal) / band.sample_rate
-            
-            # Cursor auf Startposition setzen
-            self.band_cursor.setValue(0)
-            self.band_cursor.setVisible(True)
-            
-            # Timer für Cursor-Update starten
-            if self._band_timer is None:
-                self._band_timer = QTimer()
-                self._band_timer.timeout.connect(self._update_band_cursor)
-            self._band_timer.start(50)  # 20 FPS - ausreichend flüssig, weniger CPU-Last
+            self._band_stream = sd.play(faded_data.astype(np.float32), band.sample_rate)
             
             self.btn_stop.setEnabled(True)
             self.status_label.setText(f"▶ Spiele {format_frequency(band.center_frequency)}...")
@@ -811,8 +793,6 @@ class MainWindow(QMainWindow):
     
     def _stop_playback(self):
         """Wiedergabe stoppen."""
-        self._is_playing_band = False
-        
         try:
             import sounddevice as sd
             sd.stop()
@@ -820,40 +800,8 @@ class MainWindow(QMainWindow):
         except:
             pass
         
-        # Timer stoppen
-        if self._band_timer:
-            self._band_timer.stop()
-        
-        # Cursor zurücksetzen und verstecken
-        self.band_cursor.setValue(0)
-        self.band_cursor.setVisible(False)
-        
         self.btn_stop.setEnabled(False)
         self.status_label.setText("")
-    
-    def _update_band_cursor(self):
-        """Cursor während Terzband-Wiedergabe aktualisieren."""
-        if not self._is_playing_band:
-            return
-        
-        try:
-            import time
-            
-            # Position basierend auf verstrichener Zeit berechnen
-            elapsed = time.time() - self._band_playback_start_time
-            current_time = elapsed
-            
-            # Cursor aktualisieren
-            if current_time <= self._current_band_duration:
-                self.band_cursor.setValue(current_time)
-            else:
-                # Ende erreicht - automatisch stoppen
-                self._stop_playback()
-                
-        except Exception as e:
-            # Bei Fehler stoppen
-            print(f"Band cursor update error: {e}")
-            self._stop_playback()
     
     def _play_selection(self):
         """Selektierten Bereich abspielen."""
@@ -880,23 +828,11 @@ class MainWindow(QMainWindow):
                 # Stereo: beide Kanäle
                 data = self._audio.data[start_sample:end_sample]
             
+            # Fade-In/Out anwenden um Klicks zu vermeiden
+            faded_data = self._apply_fade(data, self._audio.sample_rate, fade_ms=10.0)
+            
             # Abspielen
-            import time
-            self._selection_stream = sd.play(data.astype(np.float32), self._audio.sample_rate)
-            self._selection_playback_start_time = time.time()
-            self._is_playing_selection = True
-            
-            # Cursor auf Startposition setzen
-            self.playback_cursor.setValue(self._selection_start)
-            self.spectro_cursor.setValue(self._selection_start)
-            self.playback_cursor.setVisible(True)
-            self.spectro_cursor.setVisible(True)
-            
-            # Timer für Cursor-Update starten
-            if self._selection_timer is None:
-                self._selection_timer = QTimer()
-                self._selection_timer.timeout.connect(self._update_playback_cursor)
-            self._selection_timer.start(50)  # 20 FPS - ausreichend flüssig, weniger CPU-Last
+            self._selection_stream = sd.play(faded_data.astype(np.float32), self._audio.sample_rate)
             
             # UI aktualisieren
             self.btn_play_selection.setEnabled(False)
@@ -910,8 +846,6 @@ class MainWindow(QMainWindow):
     
     def _stop_selection_playback(self):
         """Wiedergabe des selektierten Bereichs stoppen."""
-        self._is_playing_selection = False
-        
         try:
             import sounddevice as sd
             sd.stop()
@@ -919,46 +853,10 @@ class MainWindow(QMainWindow):
         except:
             pass
         
-        # Timer stoppen
-        if self._selection_timer:
-            self._selection_timer.stop()
-        
-        # Cursor zurücksetzen und verstecken
-        if self._audio is not None:
-            self.playback_cursor.setValue(self._selection_start)
-            self.spectro_cursor.setValue(self._selection_start)
-        self.playback_cursor.setVisible(False)
-        self.spectro_cursor.setVisible(False)
-        
         # UI aktualisieren
         self.btn_play_selection.setEnabled(True)
         self.btn_stop_selection.setEnabled(False)
         self.status_label.setText("")
-    
-    def _update_playback_cursor(self):
-        """Cursor während Wiedergabe aktualisieren."""
-        if not self._is_playing_selection or self._audio is None:
-            return
-        
-        try:
-            import time
-            
-            # Position basierend auf verstrichener Zeit berechnen
-            elapsed = time.time() - self._selection_playback_start_time
-            current_time = self._selection_start + elapsed
-            
-            # Cursor aktualisieren (synchron in beiden Plots)
-            if current_time <= self._selection_end:
-                self.playback_cursor.setValue(current_time)
-                self.spectro_cursor.setValue(current_time)
-            else:
-                # Ende des selektierten Bereichs erreicht - automatisch stoppen
-                self._stop_selection_playback()
-                
-        except Exception as e:
-            # Bei Fehler stoppen
-            print(f"Cursor update error: {e}")
-            self._stop_selection_playback()
     
     def _export_band(self):
         """Ausgewähltes Band exportieren."""
@@ -1002,12 +900,6 @@ class MainWindow(QMainWindow):
         # Wiedergabe stoppen
         self._stop_playback()
         self._stop_selection_playback()
-        
-        # Timer stoppen
-        if self._selection_timer:
-            self._selection_timer.stop()
-        if self._band_timer:
-            self._band_timer.stop()
         
         # Worker beenden
         if self._worker and self._worker.isRunning():
