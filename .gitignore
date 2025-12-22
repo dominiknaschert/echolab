@@ -1,5 +1,6 @@
 /.venv
 /Literatur
+/test_rirs
 
 # Python cache
 __pycache__/
