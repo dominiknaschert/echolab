@@ -1,14 +1,14 @@
 """
-Spektralanalyse-Modul
+Spectral Analysis Module
 
-Berechnet Spektrogramme mit konfigurierbaren Parametern.
-Optimiert für Analyse, nicht für ästhetische Darstellung.
+Computes spectrograms with configurable parameters.
+Optimized for analysis, not for aesthetic display.
 
-Technische Annahmen:
-- STFT-basierte Spektrogrammberechnung
-- Logarithmische Frequenzachse für Darstellung
-- Alle Parameter sind explizit konfigurierbar
-- Keine Glättung oder Interpolation ohne Nutzerentscheidung
+Technical assumptions:
+- STFT-based spectrogram computation
+- Logarithmic frequency axis for display
+- All parameters are explicitly configurable
+- No smoothing or interpolation without user decision
 """
 
 from dataclasses import dataclass
@@ -20,16 +20,16 @@ from scipy import signal
 @dataclass
 class SpectrogramConfig:
     """
-    Konfiguration für Spektrogramm-Berechnung.
+    Configuration for spectrogram computation.
     
-    Alle Parameter sind explizit anzugeben.
-    Es gibt keine "automatischen" Einstellungen.
+    All parameters must be explicitly specified.
+    There are no "automatic" settings.
     
     Attributes:
-        fft_size: FFT-Größe (sollte Potenz von 2 sein)
-        hop_size: Schrittweite in Samples (bestimmt Zeitauflösung)
-        window: Fensterfunktion
-        overlap_percent: Alternative zu hop_size, berechnet hop automatisch
+        fft_size: FFT size (should be power of 2)
+        hop_size: Step size in samples (determines time resolution)
+        window: Window function
+        overlap_percent: Alternative to hop_size, calculates hop automatically
     """
     fft_size: int = 2048
     hop_size: Optional[int] = None
@@ -38,46 +38,46 @@ class SpectrogramConfig:
     kaiser_beta: float = 14.0
     
     def __post_init__(self):
-        """Berechne hop_size aus overlap wenn nicht angegeben."""
+        """Calculate hop_size from overlap if not specified."""
         if self.hop_size is None:
             self.hop_size = int(self.fft_size * (1 - self.overlap_percent / 100))
         
-        # Validierung
+        # Validation
         if self.fft_size < 32:
-            raise ValueError("FFT-Größe muss mindestens 32 sein")
+            raise ValueError("FFT size must be at least 32")
         if self.hop_size < 1:
-            raise ValueError("Hop-Size muss mindestens 1 sein")
+            raise ValueError("Hop size must be at least 1")
         if self.hop_size > self.fft_size:
-            raise ValueError("Hop-Size darf nicht größer als FFT-Größe sein")
+            raise ValueError("Hop size must not be greater than FFT size")
     
     @property
     def effective_overlap(self) -> float:
-        """Tatsächliche Überlappung in Prozent."""
+        """Actual overlap in percent."""
         return (1 - self.hop_size / self.fft_size) * 100
     
     def frequency_resolution(self, sample_rate: int) -> float:
-        """Frequenzauflösung in Hz."""
+        """Frequency resolution in Hz."""
         return sample_rate / self.fft_size
     
     def time_resolution(self, sample_rate: int) -> float:
-        """Zeitauflösung in Sekunden."""
+        """Time resolution in seconds."""
         return self.hop_size / sample_rate
 
 
 @dataclass 
 class SpectrogramResult:
     """
-    Ergebnis einer Spektrogramm-Berechnung.
+    Result of a spectrogram computation.
     
-    Enthält alle notwendigen Informationen für Darstellung und Analyse.
+    Contains all necessary information for display and analysis.
     
     Attributes:
-        magnitude: Magnitudenwerte, Shape: (frequencies, time_frames)
-        phase: Phasenwerte in Radiant, Shape: (frequencies, time_frames)
-        frequencies: Frequenzachse in Hz
-        times: Zeitachse in Sekunden
-        config: Verwendete Konfiguration
-        sample_rate: Samplerate der Eingangsdaten
+        magnitude: Magnitude values, Shape: (frequencies, time_frames)
+        phase: Phase values in radians, Shape: (frequencies, time_frames)
+        frequencies: Frequency axis in Hz
+        times: Time axis in seconds
+        config: Used configuration
+        sample_rate: Sample rate of input data
     """
     magnitude: np.ndarray
     phase: np.ndarray
@@ -91,18 +91,18 @@ class SpectrogramResult:
         Magnitude in dB.
         
         Args:
-            ref: Referenzwert (1.0 für dBFS)
-            min_db: Minimaler dB-Wert (für log(0)-Vermeidung)
+            ref: Reference value (1.0 for dBFS)
+            min_db: Minimum dB value (to avoid log(0))
             
         Returns:
             Magnitude in dB, Shape: (frequencies, time_frames)
         """
-        # Vermeide log(0)
+        # Avoid log(0)
         mag = np.maximum(self.magnitude, 10 ** (min_db / 20) * ref)
         return 20 * np.log10(mag / ref)
     
     def power_db(self, ref: float = 1.0, min_db: float = -120.0) -> np.ndarray:
-        """Leistungsspektrum in dB."""
+        """Power spectrum in dB."""
         power = self.magnitude ** 2
         power = np.maximum(power, 10 ** (min_db / 10) * ref)
         return 10 * np.log10(power / ref)
@@ -114,38 +114,38 @@ def compute_spectrogram(
     config: Optional[SpectrogramConfig] = None,
 ) -> SpectrogramResult:
     """
-    Berechne Spektrogramm eines Audiosignals.
+    Compute spectrogram of an audio signal.
     
-    Verwendet Short-Time Fourier Transform (STFT).
+    Uses Short-Time Fourier Transform (STFT).
     
-    Technische Details:
-    - Fensterung reduziert spektrale Leckage
-    - Überlappung verbessert Zeitauflösung
-    - Nyquist-Frequenz begrenzt Frequenzachse auf sample_rate/2
+    Technical details:
+    - Windowing reduces spectral leakage
+    - Overlap improves time resolution
+    - Nyquist frequency limits frequency axis to sample_rate/2
     
-    Frequenz-Zeit-Auflösungs-Kompromiss (Heisenberg):
-    - Große FFT: Gute Frequenzauflösung, schlechte Zeitauflösung
-    - Kleine FFT: Gute Zeitauflösung, schlechte Frequenzauflösung
+    Frequency-time resolution trade-off (Heisenberg):
+    - Large FFT: Good frequency resolution, poor time resolution
+    - Small FFT: Good time resolution, poor frequency resolution
     
     Args:
-        data: Audiosignal (1D Mono oder einzelner Kanal)
-        sample_rate: Samplerate in Hz
-        config: Spektrogramm-Konfiguration
+        data: Audio signal (1D mono or single channel)
+        sample_rate: Sample rate in Hz
+        config: Spectrogram configuration
         
     Returns:
-        SpectrogramResult mit allen Daten
+        SpectrogramResult with all data
     """
     if config is None:
         config = SpectrogramConfig()
     
-    # Stelle sicher, dass wir 1D-Daten haben
+    # Ensure we have 1D data
     if data.ndim != 1:
-        raise ValueError("Spektrogramm benötigt 1D-Signal (Mono oder einzelner Kanal)")
+        raise ValueError("Spectrogram requires 1D signal (mono or single channel)")
     
-    # Erstelle Fenster
+    # Create window
     window = _create_window(config.window, config.fft_size, config.kaiser_beta)
     
-    # Berechne STFT mit scipy
+    # Compute STFT with scipy
     frequencies, times, stft_result = signal.stft(
         data,
         fs=sample_rate,
@@ -158,7 +158,7 @@ def compute_spectrogram(
         padded=True,
     )
     
-    # Extrahiere Magnitude und Phase
+    # Extract magnitude and phase
     magnitude = np.abs(stft_result)
     phase = np.angle(stft_result)
     
@@ -180,22 +180,22 @@ def compute_power_spectrum(
     average_method: Literal["mean", "median"] = "mean",
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Berechne gemitteltes Leistungsspektrum (Welch-Methode).
+    Compute averaged power spectrum (Welch method).
     
-    Für Gesamtspektrum eines Signals, nicht zeitaufgelöst.
+    For overall spectrum of a signal, not time-resolved.
     
     Args:
-        data: Audiosignal (1D)
-        sample_rate: Samplerate
-        fft_size: FFT-Größe
-        window: Fensterfunktion
-        average_method: Mittelungsmethode
+        data: Audio signal (1D)
+        sample_rate: Sample rate
+        fft_size: FFT size
+        window: Window function
+        average_method: Averaging method
         
     Returns:
-        Tuple aus (Frequenzen, Leistungsdichte)
+        Tuple of (frequencies, power spectral density)
     """
     if data.ndim != 1:
-        raise ValueError("Leistungsspektrum benötigt 1D-Signal")
+        raise ValueError("Power spectrum requires 1D signal")
     
     frequencies, psd = signal.welch(
         data,
@@ -218,32 +218,32 @@ def frequency_to_log_scale(
     f_max: Optional[float] = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Konvertiere lineares Spektrogramm zu logarithmischer Frequenzachse.
+    Convert linear spectrogram to logarithmic frequency axis.
     
-    Für bessere visuelle Darstellung, besonders im Bassbereich.
+    For better visual display, especially in the bass range.
     
-    Technische Details:
-    - Interpolation zwischen benachbarten Bins
-    - Frequenzen unter f_min werden abgeschnitten
-    - Logarithmisch äquidistante Frequenzbins
+    Technical details:
+    - Interpolation between adjacent bins
+    - Frequencies below f_min are truncated
+    - Logarithmically equidistant frequency bins
     
     Args:
-        magnitude: Magnitudenwerte, Shape: (frequencies, time)
-        frequencies: Lineare Frequenzachse in Hz
-        num_bins: Anzahl der logarithmischen Bins
-        f_min: Minimale Frequenz (typisch 20 Hz)
-        f_max: Maximale Frequenz (default: Nyquist)
+        magnitude: Magnitude values, Shape: (frequencies, time)
+        frequencies: Linear frequency axis in Hz
+        num_bins: Number of logarithmic bins
+        f_min: Minimum frequency (typically 20 Hz)
+        f_max: Maximum frequency (default: Nyquist)
         
     Returns:
-        Tuple aus (logarithmische Magnitudes, logarithmische Frequenzen)
+        Tuple of (logarithmic magnitudes, logarithmic frequencies)
     """
     if f_max is None:
         f_max = frequencies[-1]
     
-    # Logarithmische Frequenzachse
+    # Logarithmic frequency axis
     log_frequencies = np.logspace(np.log10(f_min), np.log10(f_max), num_bins)
     
-    # Interpolation für jede Zeitframe
+    # Interpolation for each time frame
     log_magnitude = np.zeros((num_bins, magnitude.shape[1]))
     
     for t in range(magnitude.shape[1]):
@@ -263,7 +263,7 @@ def _create_window(
     size: int,
     kaiser_beta: float = 14.0,
 ) -> np.ndarray:
-    """Erstelle Fensterfunktion."""
+    """Create window function."""
     if window_type == "hann":
         return signal.windows.hann(size)
     elif window_type == "hamming":

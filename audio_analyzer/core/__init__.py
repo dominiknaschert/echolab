@@ -1,11 +1,11 @@
 """
-Core DSP module - vollständig ohne GUI-Abhängigkeiten testbar.
+Core DSP module - fully testable without GUI dependencies.
 
-Dieses Modul enthält die gesamte Signalverarbeitungslogik:
+This module contains all signal processing logic:
 - Audio I/O (WAV, MP3)
-- Spektralanalyse
-- IEC 61260 Terzbandfilterbank
-- Impulsantwort-Berechnung
+- Spectral analysis
+- IEC 61260 third-octave filterbank
+- Impulse response computation
 """
 
 from .audio_io import AudioFile, load_audio, save_audio

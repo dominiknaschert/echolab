@@ -1,14 +1,14 @@
 """
 Audio I/O Module
 
-Lädt und speichert Audiodateien (WAV, MP3) ohne implizite Signalmanipulation.
-Der Nutzer entscheidet bewusst über Downmix und Resampling.
+Loads and saves audio files (WAV, MP3) without implicit signal manipulation.
+The user consciously decides on downmix and resampling.
 
-Technische Annahmen:
-- WAV-Dateien werden mit soundfile geladen (hohe Präzision, keine Konvertierung)
-- MP3-Dateien werden mit librosa/audioread dekodiert
-- Alle Audiodaten werden als float64 numpy-Arrays zurückgegeben (Bereich -1.0 bis 1.0)
-- Kanalreihenfolge bei Stereo: [links, rechts] als (samples, 2) Array
+Technical assumptions:
+- WAV files are loaded with soundfile (high precision, no conversion)
+- MP3 files are decoded with librosa/audioread
+- All audio data is returned as float64 numpy arrays (range -1.0 to 1.0)
+- Channel order for stereo: [left, right] as (samples, 2) array
 """
 
 from dataclasses import dataclass, field
@@ -21,20 +21,20 @@ import soundfile as sf
 @dataclass
 class AudioFile:
     """
-    Repräsentiert eine geladene Audiodatei mit allen Metadaten.
+    Represents a loaded audio file with all metadata.
     
-    Das Audiosignal wird NICHT automatisch verändert.
-    Downmix/Resampling erfolgt nur auf explizite Nutzeranweisung.
+    The audio signal is NOT automatically modified.
+    Downmix/Resampling only occurs on explicit user instruction.
     
     Attributes:
-        data: Audiodaten als numpy array, Shape: (samples,) oder (samples, channels)
-        sample_rate: Original-Samplerate der Datei
-        channels: Anzahl der Kanäle (1=Mono, 2=Stereo)
-        duration_seconds: Dauer in Sekunden
-        num_samples: Anzahl der Samples pro Kanal
-        file_path: Pfad zur Quelldatei
-        format_info: Formatinformationen (Subtype, Endianness)
-        bit_depth: Bit-Tiefe des Originals (falls bekannt)
+        data: Audio data as numpy array, Shape: (samples,) or (samples, channels)
+        sample_rate: Original sample rate of the file
+        channels: Number of channels (1=Mono, 2=Stereo)
+        duration_seconds: Duration in seconds
+        num_samples: Number of samples per channel
+        file_path: Path to source file
+        format_info: Format information (Subtype, Endianness)
+        bit_depth: Bit depth of original (if known)
     """
     data: np.ndarray
     sample_rate: int
@@ -46,48 +46,48 @@ class AudioFile:
     bit_depth: Optional[int] = None
     
     def __post_init__(self):
-        """Validiere Datenintegrität."""
+        """Validate data integrity."""
         if self.data.ndim == 1:
-            assert self.channels == 1, "1D-Array muss Mono sein"
+            assert self.channels == 1, "1D array must be mono"
         elif self.data.ndim == 2:
-            assert self.data.shape[1] == self.channels, "Kanalanzahl stimmt nicht"
+            assert self.data.shape[1] == self.channels, "Channel count mismatch"
         else:
-            raise ValueError("Audio-Array muss 1D oder 2D sein")
+            raise ValueError("Audio array must be 1D or 2D")
     
     def get_channel(self, channel: int) -> np.ndarray:
         """
-        Extrahiere einen einzelnen Kanal.
+        Extract a single channel.
         
         Args:
-            channel: 0 für links/Mono, 1 für rechts
+            channel: 0 for left/Mono, 1 for right
             
         Returns:
-            1D numpy array mit den Samples des Kanals
+            1D numpy array with the channel samples
         """
         if self.channels == 1:
             if channel != 0:
-                raise ValueError("Mono-Datei hat nur Kanal 0")
+                raise ValueError("Mono file only has channel 0")
             return self.data if self.data.ndim == 1 else self.data[:, 0]
         else:
             if channel not in (0, 1):
-                raise ValueError("Stereo unterstützt nur Kanäle 0 und 1")
+                raise ValueError("Stereo only supports channels 0 and 1")
             return self.data[:, channel]
     
     def time_to_sample(self, time_seconds: float) -> int:
-        """Konvertiere Zeit in Sekunden zu Sample-Index."""
+        """Convert time in seconds to sample index."""
         sample = int(time_seconds * self.sample_rate)
         return max(0, min(sample, self.num_samples - 1))
     
     def sample_to_time(self, sample: int) -> float:
-        """Konvertiere Sample-Index zu Zeit in Sekunden."""
+        """Convert sample index to time in seconds."""
         return sample / self.sample_rate
     
     def get_time_range(self, start_sample: int, end_sample: int) -> np.ndarray:
         """
-        Extrahiere einen Zeitbereich (nicht-destruktiv).
+        Extract a time range (non-destructive).
         
         Returns:
-            Kopie der Audiodaten im angegebenen Bereich
+            Copy of audio data in the specified range
         """
         start = max(0, start_sample)
         end = min(end_sample, self.num_samples)
@@ -100,29 +100,29 @@ class AudioFile:
 
 def load_audio(file_path: str | Path) -> AudioFile:
     """
-    Lade eine Audiodatei ohne implizite Konvertierung.
+    Load an audio file without implicit conversion.
     
-    Unterstützte Formate:
-    - WAV (alle gängigen Subtypes: PCM_16, PCM_24, PCM_32, FLOAT)
+    Supported formats:
+    - WAV (all common subtypes: PCM_16, PCM_24, PCM_32, FLOAT)
     - MP3 (via librosa/audioread)
     
-    Die Audiodaten werden als float64 im Bereich [-1.0, 1.0] zurückgegeben.
-    KEINE automatische Konvertierung von Samplerate oder Kanalanzahl.
+    Audio data is returned as float64 in range [-1.0, 1.0].
+    NO automatic conversion of sample rate or channel count.
     
     Args:
-        file_path: Pfad zur Audiodatei
+        file_path: Path to audio file
         
     Returns:
-        AudioFile-Objekt mit allen Metadaten
+        AudioFile object with all metadata
         
     Raises:
-        FileNotFoundError: Datei existiert nicht
-        ValueError: Nicht unterstütztes Format
+        FileNotFoundError: File does not exist
+        ValueError: Unsupported format
     """
     path = Path(file_path)
     
     if not path.exists():
-        raise FileNotFoundError(f"Audiodatei nicht gefunden: {path}")
+        raise FileNotFoundError(f"Audio file not found: {path}")
     
     suffix = path.suffix.lower()
     
@@ -136,21 +136,21 @@ def load_audio(file_path: str | Path) -> AudioFile:
 
 def _load_wav(path: Path) -> AudioFile:
     """
-    Lade WAV-Datei mit soundfile.
+    Load WAV file with soundfile.
     
-    soundfile verwendet libsndfile und liefert präzise Ergebnisse
-    ohne ungewollte Konvertierungen.
+    soundfile uses libsndfile and provides precise results
+    without unwanted conversions.
     """
-    # Lese Audio und Samplerate
+    # Read audio and sample rate
     data, sample_rate = sf.read(path, dtype='float64', always_2d=False)
     
-    # Lese erweiterte Metadaten
+    # Read extended metadata
     info = sf.info(path)
     
-    # Bestimme Bit-Tiefe aus Subtype
+    # Determine bit depth from subtype
     bit_depth = _extract_bit_depth(info.subtype)
     
-    # Bestimme Kanalanzahl
+    # Determine channel count
     if data.ndim == 1:
         channels = 1
         num_samples = len(data)
@@ -178,35 +178,35 @@ def _load_wav(path: Path) -> AudioFile:
 
 def _load_mp3(path: Path) -> AudioFile:
     """
-    Lade MP3-Datei mit pydub.
+    Load MP3 file with pydub.
     
-    Benötigt ffmpeg im System PATH für die Dekodierung.
-    Falls ffmpeg nicht verfügbar ist, wird ein Fehler ausgegeben.
+    Requires ffmpeg in system PATH for decoding.
+    If ffmpeg is not available, an error is raised.
     """
     try:
         from pydub import AudioSegment
     except ImportError:
-        raise ImportError("pydub ist nicht installiert. Bitte mit 'pip install pydub' installieren.")
+        raise ImportError("pydub is not installed. Please install with 'pip install pydub'.")
     
     try:
         audio = AudioSegment.from_mp3(path)
     except Exception as e:
         raise RuntimeError(
-            f"MP3 konnte nicht geladen werden: {e}\n"
-            "Stellen Sie sicher, dass ffmpeg installiert ist:\n"
+            f"MP3 could not be loaded: {e}\n"
+            "Please ensure ffmpeg is installed:\n"
             "  macOS: brew install ffmpeg\n"
             "  Windows: https://ffmpeg.org/download.html"
         )
     
-    # Extrahiere Metadaten
+    # Extract metadata
     sample_rate = audio.frame_rate
     channels = audio.channels
     
-    # Konvertiere zu numpy array
+    # Convert to numpy array
     samples = np.array(audio.get_array_of_samples())
     
-    # Normalisiere auf float64 im Bereich [-1, 1]
-    # pydub gibt int16 oder int32 zurück
+    # Normalize to float64 in range [-1, 1]
+    # pydub returns int16 or int32
     if audio.sample_width == 2:  # 16-bit
         samples = samples.astype(np.float64) / 32768.0
     elif audio.sample_width == 4:  # 32-bit
@@ -214,7 +214,7 @@ def _load_mp3(path: Path) -> AudioFile:
     else:  # 8-bit
         samples = (samples.astype(np.float64) - 128) / 128.0
     
-    # Reshape für Stereo
+    # Reshape for stereo
     if channels == 2:
         samples = samples.reshape(-1, 2)
         num_samples = samples.shape[0]
@@ -224,7 +224,7 @@ def _load_mp3(path: Path) -> AudioFile:
     format_info = {
         "format": "MP3",
         "subtype": "MPEG Layer 3",
-        "note": "MP3 ist verlustbehaftet, Originaldaten nicht rekonstruierbar",
+        "note": "MP3 is lossy, original data cannot be reconstructed",
     }
     
     return AudioFile(
@@ -235,7 +235,7 @@ def _load_mp3(path: Path) -> AudioFile:
         num_samples=num_samples,
         file_path=path,
         format_info=format_info,
-        bit_depth=None,  # MP3 hat keine feste Bit-Tiefe
+        bit_depth=None,  # MP3 has no fixed bit depth
     )
 
 
@@ -246,31 +246,31 @@ def save_audio(
     subtype: Literal["PCM_16", "PCM_24", "PCM_32", "FLOAT"] = "PCM_24",
 ) -> None:
     """
-    Speichere Audiodaten als WAV-Datei.
+    Save audio data as WAV file.
     
     Args:
-        data: Audiodaten als numpy array (float64, Bereich -1.0 bis 1.0)
-        file_path: Zielpfad
-        sample_rate: Samplerate
-        subtype: WAV-Subtype für Quantisierung
+        data: Audio data as numpy array (float64, range -1.0 to 1.0)
+        file_path: Target path
+        sample_rate: Sample rate
+        subtype: WAV subtype for quantization
         
     Raises:
-        ValueError: Ungültige Daten oder Parameter
+        ValueError: Invalid data or parameters
     """
     path = Path(file_path)
     
-    # Validierung
+    # Validation
     if data.ndim > 2:
-        raise ValueError("Audio muss 1D oder 2D sein")
+        raise ValueError("Audio must be 1D or 2D")
     
     if not np.issubdtype(data.dtype, np.floating):
-        raise ValueError("Audiodaten müssen float sein")
+        raise ValueError("Audio data must be float")
     
-    # Clipping-Warnung
+    # Clipping warning
     if np.any(np.abs(data) > 1.0):
         import warnings
         warnings.warn(
-            "Audiodaten überschreiten [-1.0, 1.0]. Clipping wird angewendet.",
+            "Audio data exceeds [-1.0, 1.0]. Clipping will be applied.",
             UserWarning
         )
         data = np.clip(data, -1.0, 1.0)
@@ -279,7 +279,7 @@ def save_audio(
 
 
 def _extract_bit_depth(subtype: str) -> Optional[int]:
-    """Extrahiere Bit-Tiefe aus soundfile Subtype-String."""
+    """Extract bit depth from soundfile subtype string."""
     bit_depth_map = {
         "PCM_16": 16,
         "PCM_24": 24,

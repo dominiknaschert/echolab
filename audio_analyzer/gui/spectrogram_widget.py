@@ -1,12 +1,12 @@
 """
-Spektrogramm-Widget
+Spectrogram Widget
 
-Zeigt Zeit-Frequenz-Darstellung mit:
-- Logarithmischer Frequenzachse
-- Konfigurierbaren FFT-Parametern
-- Synchronisation mit Waveform-Widget
+Displays time-frequency representation with:
+- Logarithmic frequency axis
+- Configurable FFT parameters
+- Synchronization with Waveform Widget
 
-Verwendet pyqtgraph ImageItem für effiziente Darstellung.
+Uses pyqtgraph ImageItem for efficient display.
 """
 
 from typing import Optional
@@ -25,16 +25,16 @@ from ..utils.formatting import format_frequency
 
 class SpectrogramWidget(QWidget):
     """
-    Widget zur Darstellung von Spektrogrammen.
+    Widget for displaying spectrograms.
     
     Features:
-    - Logarithmische oder lineare Frequenzachse
-    - Konfigurierbare FFT-Parameter (Größe, Fenster, Überlappung)
-    - Farbskala-Anpassung (dB-Bereich)
-    - Synchronisation mit Waveform-View
+    - Logarithmic or linear frequency axis
+    - Configurable FFT parameters (size, window, overlap)
+    - Color scale adjustment (dB range)
+    - Synchronization with Waveform View
     
     Signals:
-        parameterChanged: Emittiert wenn FFT-Parameter geändert werden
+        parameterChanged: Emitted when FFT parameters are changed
     """
     
     parameterChanged = Signal()
@@ -80,7 +80,7 @@ class SpectrogramWidget(QWidget):
         settings_layout.addWidget(self.fft_combo)
         
         # Window function
-        settings_layout.addWidget(QLabel("Fenster:"))
+        settings_layout.addWidget(QLabel("Window:"))
         self.window_combo = QComboBox()
         self.window_combo.addItems(["hann", "hamming", "blackman", "kaiser", "rectangular"])
         self.window_combo.setCurrentText("hann")
@@ -88,7 +88,7 @@ class SpectrogramWidget(QWidget):
         settings_layout.addWidget(self.window_combo)
         
         # Overlap
-        settings_layout.addWidget(QLabel("Überlappung:"))
+        settings_layout.addWidget(QLabel("Overlap:"))
         self.overlap_combo = QComboBox()
         self.overlap_combo.addItems(["25%", "50%", "75%", "87.5%"])
         self.overlap_combo.setCurrentText("75%")
@@ -98,9 +98,9 @@ class SpectrogramWidget(QWidget):
         settings_layout.addStretch()
         
         # Frequency scale toggle
-        settings_layout.addWidget(QLabel("Frequenz:"))
+        settings_layout.addWidget(QLabel("Frequency:"))
         self.freq_scale_combo = QComboBox()
-        self.freq_scale_combo.addItems(["Logarithmisch", "Linear"])
+        self.freq_scale_combo.addItems(["Logarithmic", "Linear"])
         self.freq_scale_combo.currentTextChanged.connect(self._on_freq_scale_changed)
         settings_layout.addWidget(self.freq_scale_combo)
         
@@ -124,8 +124,8 @@ class SpectrogramWidget(QWidget):
         # Plot widget
         self.plot_widget = pg.PlotWidget()
         self.plot_widget.setBackground('#1a1a2e')
-        self.plot_widget.setLabel('left', 'Frequenz', units='Hz')
-        self.plot_widget.setLabel('bottom', 'Zeit', units='s')
+        self.plot_widget.setLabel('left', 'Frequency', units='Hz')
+        self.plot_widget.setLabel('bottom', 'Time', units='s')
         
         # Image item for spectrogram
         self.img_item = pg.ImageItem()

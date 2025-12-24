@@ -1,10 +1,10 @@
 """
-Hauptfenster der Audio Analyzer Anwendung - Vereinfachte Version
+Main window of the Audio Analyzer application - Simplified version
 
-Struktur:
-- Tab 1: Zeitbereich (groß) + Spektrogramm
-- Tab 2: FFT-Analyse des selektierten Bereichs
-- Tab 3: Terzband-Impulsantworten
+Structure:
+- Tab 1: Time domain (large) + Spectrogram
+- Tab 2: FFT analysis of selected region
+- Tab 3: Third-octave impulse responses
 """
 
 from typing import Optional
@@ -29,34 +29,34 @@ from .flutter_echo_widget import FlutterEchoWidget
 
 class ShiftZoomPlotWidget(pg.PlotWidget):
     """
-    Custom PlotWidget mit Shift-Taste für Y-Achsen-Kontrolle.
+    Custom PlotWidget with Shift key for Y-axis control.
     
-    - Standard: Nur X-Achse zoombar und verschiebbar
-    - Mit Shift: Nur Y-Achse zoombar und verschiebbar
+    - Default: Only X-axis zoomable and pannable
+    - With Shift: Only Y-axis zoomable and pannable
     """
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Standard: Nur X-Achse zoombar
+        # Default: Only X-axis zoomable
         self.setMouseEnabled(x=True, y=False)
         self._shift_active = False
     
     def wheelEvent(self, ev: QWheelEvent):
-        """Überschreibe Wheel-Event für Shift-Y-Zoom."""
+        """Override wheel event for Shift-Y-zoom."""
         modifiers = ev.modifiers()
         
         if modifiers & Qt.KeyboardModifier.ShiftModifier:
-            # Shift gedrückt: Y-Achse zoombar machen
+            # Shift pressed: Make Y-axis zoomable
             self.setMouseEnabled(x=False, y=True)
             super().wheelEvent(ev)
-            # Zurück zu Standard
+            # Back to default
             self.setMouseEnabled(x=True, y=False)
         else:
-            # Normal: Nur X-Achse
+            # Normal: Only X-axis
             super().wheelEvent(ev)
     
     def mousePressEvent(self, ev):
-        """Maus gedrückt - prüfe Shift für Y-Achsen-Pan."""
+        """Mouse pressed - check Shift for Y-axis pan."""
         modifiers = ev.modifiers()
         if modifiers & Qt.KeyboardModifier.ShiftModifier:
             self._shift_active = True
@@ -67,7 +67,7 @@ class ShiftZoomPlotWidget(pg.PlotWidget):
         super().mousePressEvent(ev)
     
     def mouseMoveEvent(self, ev):
-        """Maus bewegt - Shift-Status aktualisieren."""
+        """Mouse moved - update Shift status."""
         modifiers = ev.modifiers()
         if modifiers & Qt.KeyboardModifier.ShiftModifier:
             if not self._shift_active:
@@ -81,7 +81,7 @@ class ShiftZoomPlotWidget(pg.PlotWidget):
 
 
 class FilterWorker(QThread):
-    """Worker für Terzband-Berechnung im Hintergrund."""
+    """Worker for third-octave calculation in background."""
     finished = Signal(list)
     progress = Signal(int, int)
     
@@ -102,11 +102,11 @@ class FilterWorker(QThread):
 
 
 class LogAxis(pg.AxisItem):
-    """Benutzerdefinierte Achse für standardisierte akustische Frequenzmarkierungen."""
+    """Custom axis for standardized acoustic frequency markers."""
     def tickValues(self, minVal, maxVal, size):
-        # Wir definieren feste Standardfrequenzen für die Beschriftung (Hz)
+        # Define fixed standard frequencies for labeling (Hz)
         freqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]
-        # Umrechnen in den internen Log-Raum (da setLogMode(x=True) aktiv ist)
+        # Convert to internal log space (since setLogMode(x=True) is active)
         ticks = [np.log10(f) for f in freqs if minVal <= np.log10(f) <= maxVal]
         return [(1.0, ticks)]
 
@@ -122,7 +122,7 @@ class LogAxis(pg.AxisItem):
 
 
 class MainWindow(QMainWindow):
-    """Vereinfachtes Hauptfenster."""
+    """Simplified main window."""
     
     def __init__(self):
         super().__init__()
@@ -132,8 +132,8 @@ class MainWindow(QMainWindow):
         self._selection_end = 0
         self._bands: list[ThirdOctaveBand] = []
         self._worker: Optional[FilterWorker] = None
-        self._selection_stream = None  # Für Wiedergabe des selektierten Bereichs
-        self._band_stream = None  # Für Wiedergabe des Terzbands
+        self._selection_stream = None  # For playback of selected region
+        self._band_stream = None  # For playback of third-octave band
         
         self._init_ui()
         self._apply_theme()
@@ -147,24 +147,24 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentIndex((self.tabs.currentIndex() - 1) % self.tabs.count())
 
     def _init_ui(self):
-        """UI aufbauen."""
+        """Build UI."""
         self.setWindowTitle("Audio Analyzer")
         self.setMinimumSize(1000, 700)
         
-        # Shortcuts für Tab-Navigation (Global)
+        # Shortcuts for tab navigation (Global)
         self.shortcut_tab_next = QShortcut(QKeySequence("Tab"), self)
         self.shortcut_tab_next.activated.connect(self._next_tab)
         
         self.shortcut_tab_prev = QShortcut(QKeySequence("Shift+Tab"), self)
         self.shortcut_tab_prev.activated.connect(self._prev_tab)
         
-        # Zentrales Widget
+        # Central widget
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
         layout.setContentsMargins(8, 8, 8, 8)
         
-        # Toolbar oben
+        # Toolbar at top
         toolbar = QFrame()
         toolbar_layout = QHBoxLayout(toolbar)
         toolbar_layout.setContentsMargins(0, 0, 0, 8)
@@ -174,23 +174,23 @@ class MainWindow(QMainWindow):
         toolbar_layout.addWidget(btn_open)
         toolbar_layout.addStretch()
         
-        self.file_label = QLabel("Keine Datei geladen")
+        self.file_label = QLabel("No file loaded")
         self.file_label.setStyleSheet("color: #888;")
         toolbar_layout.addWidget(self.file_label)
         
         layout.addWidget(toolbar)
         
-        # Tab Widget
+        # Tab widget
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs, stretch=1)
         
-        # === Tab 1: Zeitbereich + Spektrogramm ===
+        # === Tab 1: Time domain + Spectrogram ===
         tab1 = QWidget()
         tab1_layout = QVBoxLayout(tab1)
         tab1_layout.setContentsMargins(0, 0, 0, 0)
         tab1_layout.setSpacing(0)
         
-        # === CONTROL BAR OBEN ===
+        # === CONTROL BAR AT TOP ===
         control_bar = QWidget()
         control_layout = QHBoxLayout(control_bar)
         control_layout.setContentsMargins(8, 8, 8, 4)
@@ -198,8 +198,8 @@ class MainWindow(QMainWindow):
         
         control_layout.addStretch()
         
-        # Buttons oben rechts
-        self.btn_play_selection = QPushButton("▶ Abspielen")
+        # Buttons at top right
+        self.btn_play_selection = QPushButton("▶ Play")
         self.btn_play_selection.clicked.connect(self._play_selection)
         self.btn_play_selection.setEnabled(False)
         control_layout.addWidget(self.btn_play_selection)
@@ -211,7 +211,7 @@ class MainWindow(QMainWindow):
         
         tab1_layout.addWidget(control_bar)
         
-        # === SPLITTER FÜR PLOTS ===
+        # === SPLITTER FOR PLOTS ===
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.setHandleWidth(1)
         
@@ -233,7 +233,7 @@ class MainWindow(QMainWindow):
         self.waveform_plot.getPlotItem().setMenuEnabled(False)
         self.waveform_curve = self.waveform_plot.plot(pen=pg.mkPen('#89b4fa', width=1))
         
-        # Selektion-Region
+        # Selection region
         self.selection_region = pg.LinearRegionItem(
             values=[0, 1],
             brush=pg.mkBrush(137, 180, 250, 50),
@@ -245,7 +245,7 @@ class MainWindow(QMainWindow):
         waveform_layout.addWidget(self.waveform_plot)
         splitter.addWidget(waveform_container)
         
-        # === SPEKTROGRAMM PLOT ===
+        # === SPECTROGRAM PLOT ===
         spectro_container = QWidget()
         spectro_layout = QVBoxLayout(spectro_container)
         spectro_layout.setContentsMargins(0, 0, 0, 0)
@@ -253,8 +253,8 @@ class MainWindow(QMainWindow):
         
         self.spectro_plot = ShiftZoomPlotWidget()
         self.spectro_plot.setBackground('#1e1e2e')
-        self.spectro_plot.setLabel('left', 'Frequenz', units='Hz')
-        self.spectro_plot.setLabel('bottom', 'Zeit', units='s')
+        self.spectro_plot.setLabel('left', 'Frequency', units='Hz')
+        self.spectro_plot.setLabel('bottom', 'Time', units='s')
         self.spectro_plot.setXRange(0, 1)
         self.spectro_plot.setYRange(0, 20000)
         self.spectro_plot.getAxis('left').setWidth(60)
@@ -271,26 +271,26 @@ class MainWindow(QMainWindow):
         
         tab1_layout.addWidget(splitter)
         
-        # === INFO UNTEN LINKS ===
+        # === INFO AT BOTTOM LEFT ===
         info_bar = QWidget()
         info_layout = QHBoxLayout(info_bar)
         info_layout.setContentsMargins(8, 4, 8, 8)
         
-        self.selection_label = QLabel("Selektion: - ")
+        self.selection_label = QLabel("Selection: - ")
         self.selection_label.setStyleSheet("padding: 6px 10px; font-family: monospace; font-size: 11px; background: #181825; border-radius: 4px; color: #cdd6f4;")
         info_layout.addWidget(self.selection_label)
         info_layout.addStretch()
         
         tab1_layout.addWidget(info_bar)
-        self.tabs.addTab(tab1, "Zeitbereich & Spektrogramm")
+        self.tabs.addTab(tab1, "Time Domain & Spectrogram")
         
-        # === Tab 2: FFT Analyse ===
+        # === Tab 2: FFT Analysis ===
         tab2 = QWidget()
         tab2_layout = QVBoxLayout(tab2)
         tab2_layout.setContentsMargins(0, 0, 0, 0)
         tab2_layout.setSpacing(0)
         
-        # === CONTROL BAR OBEN ===
+        # === CONTROL BAR AT TOP ===
         fft_control_bar = QWidget()
         fft_control_layout = QHBoxLayout(fft_control_bar)
         fft_control_layout.setContentsMargins(8, 8, 8, 4)
@@ -298,15 +298,15 @@ class MainWindow(QMainWindow):
         
         fft_control_layout.addStretch()
         
-        # FFT Controls oben rechts (gleiche Position wie Play-Buttons in Tab 1)
-        fft_control_layout.addWidget(QLabel("FFT-Größe:"))
+        # FFT Controls at top right (same position as Play buttons in Tab 1)
+        fft_control_layout.addWidget(QLabel("FFT Size:"))
         self.fft_size_combo = QComboBox()
         self.fft_size_combo.addItems(["1024", "2048", "4096", "8192", "16384"])
         self.fft_size_combo.setCurrentText("4096")
         self.fft_size_combo.currentTextChanged.connect(self._update_fft)
         fft_control_layout.addWidget(self.fft_size_combo)
         
-        fft_control_layout.addWidget(QLabel("Fenster:"))
+        fft_control_layout.addWidget(QLabel("Window:"))
         self.window_combo = QComboBox()
         self.window_combo.addItems(["hann", "hamming", "blackman", "rectangular"])
         self.window_combo.currentTextChanged.connect(self._update_fft)
@@ -320,12 +320,12 @@ class MainWindow(QMainWindow):
         fft_plot_layout.setContentsMargins(0, 0, 0, 0)
         fft_plot_layout.setSpacing(0)
         
-        # FFT PLOT mit benutzerdefinierter Log-Achse
+        # FFT PLOT with custom log axis
         self.fft_plot = pg.PlotWidget(axisItems={'bottom': LogAxis(orientation='bottom')})
         self.fft_plot.setBackground('#1e1e2e')
         self.fft_plot.showGrid(x=True, y=True, alpha=0.3)
         self.fft_plot.setLabel('left', 'Magnitude', units='dB')
-        self.fft_plot.setLabel('bottom', 'Frequenz', units='Hz')
+        self.fft_plot.setLabel('bottom', 'Frequency', units='Hz')
         self.fft_plot.setLogMode(x=True, y=False)
         self.fft_plot.getAxis('left').setWidth(60)  # Gleiche Breite wie Tab 1
         self.fft_plot.getPlotItem().layout.setContentsMargins(0, 0, 0, 0)
@@ -337,21 +337,21 @@ class MainWindow(QMainWindow):
         fft_plot_layout.addWidget(self.fft_plot)
         tab2_layout.addWidget(fft_plot_container, stretch=1)
         
-        # === INFO UNTEN LINKS (gleiche Position und Styling wie Tab 1) ===
+        # === INFO AT BOTTOM LEFT (same position and styling as Tab 1) ===
         fft_info_bar = QWidget()
         fft_info_layout = QHBoxLayout(fft_info_bar)
         fft_info_layout.setContentsMargins(8, 4, 8, 8)
         
-        self.fft_info = QLabel("Wählen Sie einen Bereich im Zeitbereich-Tab")
+        self.fft_info = QLabel("Select a region in the Time Domain tab")
         self.fft_info.setStyleSheet("padding: 6px 10px; font-family: monospace; font-size: 11px; background: #181825; border-radius: 4px; color: #cdd6f4;")
         fft_info_layout.addWidget(self.fft_info)
         fft_info_layout.addStretch()
         
         tab2_layout.addWidget(fft_info_bar)
         
-        self.tabs.addTab(tab2, "FFT Analyse")
+        self.tabs.addTab(tab2, "FFT Analysis")
         
-        # === Tab 3: Terzband-Impulsantworten ===
+        # === Tab 3: Third-Octave Impulse Responses ===
         tab3 = QWidget()
         tab3_layout = QVBoxLayout(tab3)
         tab3_layout.setContentsMargins(8, 8, 8, 8)
@@ -359,7 +359,7 @@ class MainWindow(QMainWindow):
         # Controls
         terz_controls = QHBoxLayout()
         
-        self.btn_analyze = QPushButton("▶ Terzbandanalyse starten")
+        self.btn_analyze = QPushButton("▶ Start Third-Octave Analysis")
         self.btn_analyze.clicked.connect(self._start_analysis)
         self.btn_analyze.setEnabled(False)
         terz_controls.addWidget(self.btn_analyze)
@@ -371,7 +371,7 @@ class MainWindow(QMainWindow):
         
         terz_controls.addStretch()
         
-        self.btn_play = QPushButton("▶ Abspielen")
+        self.btn_play = QPushButton("▶ Play")
         self.btn_play.clicked.connect(self._play_band)
         self.btn_play.setEnabled(False)
         terz_controls.addWidget(self.btn_play)
@@ -381,29 +381,29 @@ class MainWindow(QMainWindow):
         self.btn_stop.setEnabled(False)
         terz_controls.addWidget(self.btn_stop)
         
-        self.btn_export = QPushButton("💾 Exportieren")
+        self.btn_export = QPushButton("💾 Export")
         self.btn_export.clicked.connect(self._export_band)
         self.btn_export.setEnabled(False)
         terz_controls.addWidget(self.btn_export)
         
         tab3_layout.addLayout(terz_controls)
         
-        # Splitter für Liste und Plot
+        # Splitter for list and plot
         terz_splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # Bandliste
+        # Band list
         self.band_list = QListWidget()
         self.band_list.setMaximumWidth(180)
         self.band_list.currentRowChanged.connect(self._on_band_selected)
         terz_splitter.addWidget(self.band_list)
         
-        # Impulsantwort Plot
-        self.impulse_plot = pg.PlotWidget(title="Terzband-Impulsantwort")
+        # Impulse response plot
+        self.impulse_plot = pg.PlotWidget(title="Third-Octave Impulse Response")
         self.impulse_plot.setBackground('#1e1e2e')
         self.impulse_plot.showGrid(x=True, y=True, alpha=0.3)
         self.impulse_plot.setLabel('left', 'Amplitude')
-        self.impulse_plot.setLabel('bottom', 'Zeit', units='s')
-        # Rechtsklick-Menü deaktivieren
+        self.impulse_plot.setLabel('bottom', 'Time', units='s')
+        # Disable right-click menu
         self.impulse_plot.getPlotItem().setMenuEnabled(False)
         self.impulse_curve = self.impulse_plot.plot(pen=pg.mkPen('#f38ba8', width=1))
         self.envelope_curve = self.impulse_plot.plot(pen=pg.mkPen('#fab387', width=2))
@@ -413,7 +413,7 @@ class MainWindow(QMainWindow):
         terz_splitter.setSizes([150, 600])
         tab3_layout.addWidget(terz_splitter, stretch=1)
         
-        self.tabs.addTab(tab3, "Terzband-Impulsantworten")
+        self.tabs.addTab(tab3, "Third-Octave Impulse Responses")
         
         # === Tab 4: Room-Analysis ===
         tab4 = QWidget()
@@ -430,18 +430,18 @@ class MainWindow(QMainWindow):
         
         flutter_controls.addStretch()
         
-        # Info-Label
-        self.flutter_info_label = QLabel("Lade eine Impulsantwort und wähle einen Bereich aus")
+        # Info label
+        self.flutter_info_label = QLabel("Load an impulse response and select a region")
         self.flutter_info_label.setStyleSheet("color: #888;")
         flutter_controls.addWidget(self.flutter_info_label)
         
         tab4_layout.addLayout(flutter_controls)
         
-        # Flutter Echo Widget (jetzt Room Analysis)
+        # Flutter Echo Widget (now Room Analysis)
         self.flutter_widget = FlutterEchoWidget()
         tab4_layout.addWidget(self.flutter_widget, stretch=1)
         
-        self.tabs.addTab(tab4, "Room-Analysis")
+        self.tabs.addTab(tab4, "Room Analysis")
 
         
         # Statusbar
@@ -450,11 +450,11 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel("")
         self.statusBar.addWidget(self.status_label)
         
-        # Tab-Wechsel Handler
+        # Tab change handler
         self.tabs.currentChanged.connect(self._on_tab_changed)
         
-        # View-Synchronisation: Beide Plots immer synchron
-        self._syncing = False  # Verhindert Endlosschleife
+        # View synchronization: Both plots always synchronized
+        self._syncing = False  # Prevents infinite loop
         self.waveform_plot.sigXRangeChanged.connect(self._sync_from_waveform)
         self.spectro_plot.sigXRangeChanged.connect(self._sync_from_spectro)
         
@@ -462,7 +462,7 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
     
     def _apply_theme(self):
-        """Dark theme."""
+        """Apply dark theme."""
         self.setStyleSheet("""
             QMainWindow, QWidget {
                 background-color: #1e1e2e;
@@ -539,27 +539,27 @@ class MainWindow(QMainWindow):
         """)
     
     def _open_file(self):
-        """Datei öffnen Dialog."""
+        """Open file dialog."""
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Audiodatei öffnen", "",
-            "Audio (*.wav *.mp3);;Alle Dateien (*)"
+            self, "Open Audio File", "",
+            "Audio (*.wav *.mp3);;All Files (*)"
         )
         if filename:
             self._load_file(filename)
     
     def _load_file(self, filepath: str):
-        """Audiodatei laden."""
+        """Load audio file."""
         try:
-            self.status_label.setText(f"Lade {Path(filepath).name}...")
+            self.status_label.setText(f"Loading {Path(filepath).name}...")
             QApplication.processEvents()
             
             self._audio = load_audio(filepath)
             
-            # Waveform anzeigen
-            data = self._audio.get_channel(0)  # Linker Kanal / Mono
+            # Display waveform
+            data = self._audio.get_channel(0)  # Left channel / Mono
             time = np.arange(len(data)) / self._audio.sample_rate
             
-            # Downsampling für Anzeige
+            # Downsampling for display
             if len(data) > 50000:
                 factor = len(data) // 50000
                 data_ds = data[::factor]
@@ -568,18 +568,18 @@ class MainWindow(QMainWindow):
             else:
                 self.waveform_curve.setData(time, data)
             
-            # Achsen setzen
+            # Set axes
             self.waveform_plot.setXRange(0, self._audio.duration_seconds)
             self.waveform_plot.setYRange(-1, 1)
             
-            # Selektion auf ganzen Bereich + Grenzen setzen
+            # Set selection to full range + bounds
             self.selection_region.setBounds([0, self._audio.duration_seconds])
             self.selection_region.setRegion([0, self._audio.duration_seconds])
             
-            # Spektrogramm berechnen
+            # Calculate spectrogram
             self._update_spectrogram()
             
-            # UI updaten
+            # Update UI
             self.file_label.setText(
                 f"{self._audio.file_path.name} | "
                 f"{self._audio.sample_rate} Hz | "
@@ -594,24 +594,24 @@ class MainWindow(QMainWindow):
             self.band_list.clear()
             
         except Exception as e:
-            QMessageBox.critical(self, "Fehler", f"Konnte Datei nicht laden:\n{e}")
+            QMessageBox.critical(self, "Error", f"Could not load file:\n{e}")
     
     def _create_acoustic_colormap(self):
-        """Erstelle klassische Spektrogramm-Colormap (jet-ähnlich) wie in pyqtgraph-spectrographer."""
-        # Versuche zuerst die eingebaute "jet" Colormap von pyqtgraph zu verwenden
+        """Create classic spectrogram colormap (jet-like) as in pyqtgraph-spectrographer."""
+        # Try to use built-in "jet" colormap from pyqtgraph first
         try:
             cmap = pg.colormap.get('jet')
             self.spectro_img.setColorMap(cmap)
         except:
-            # Fallback: Benutzerdefinierte "jet"-ähnliche Colormap
-            # Klassische "jet" Colormap für Spektrogramme: blau -> cyan -> grün -> gelb -> rot
-            # Optimiert für akustische Analysen mit guter Frequenzauflösung
+            # Fallback: Custom "jet"-like colormap
+            # Classic "jet" colormap for spectrograms: blue -> cyan -> green -> yellow -> red
+            # Optimized for acoustic analyses with good frequency resolution
             colors = [
-                (0.0, (0, 0, 128)),         # Dunkelblau (sehr leise)
-                (0.25, (0, 0, 255)),        # Blau (leise)
-                (0.5, (0, 255, 255)),       # Cyan (mittel)
-                (0.75, (255, 255, 0)),      # Gelb (laut)
-                (1.0, (255, 0, 0)),         # Rot (sehr laut)
+                (0.0, (0, 0, 128)),         # Dark blue (very quiet)
+                (0.25, (0, 0, 255)),        # Blue (quiet)
+                (0.5, (0, 255, 255)),       # Cyan (medium)
+                (0.75, (255, 255, 0)),      # Yellow (loud)
+                (1.0, (255, 0, 0)),         # Red (very loud)
             ]
             
             positions = [c[0] for c in colors]
@@ -621,45 +621,45 @@ class MainWindow(QMainWindow):
             self.spectro_img.setColorMap(cmap)
     
     def _update_spectrogram(self):
-        """Spektrogramm berechnen und anzeigen."""
+        """Calculate and display spectrogram."""
         if self._audio is None:
             return
         
         data = self._audio.get_channel(0)
-        # Sehr hohe Auflösung für akustische Analysen: 16384 FFT, 95% Overlap
+        # Very high resolution for acoustic analyses: 16384 FFT, 95% overlap
         config = SpectrogramConfig(fft_size=16384, overlap_percent=95.0)
         result = compute_spectrogram(data, self._audio.sample_rate, config)
         
-        # dB konvertieren mit erweitertem Bereich für bessere Dynamik
-        db_min = -100  # Erweiterter Bereich für bessere Sichtbarkeit
+        # Convert to dB with extended range for better dynamics
+        db_min = -100  # Extended range for better visibility
         db_max = 0
         magnitude_db = result.magnitude_db(min_db=db_min)
         
-        # Auf uint8 für pyqtgraph konvertieren (0-255) mit erweitertem dB-Bereich
+        # Convert to uint8 for pyqtgraph (0-255) with extended dB range
         img_data = (magnitude_db - db_min) / (db_max - db_min)  # 0-1
         img_data = np.clip(img_data, 0, 1)
         img_uint8 = (img_data * 255).astype(np.uint8)
         
-        # Image setzen (transponiert: Zeit auf X, Frequenz auf Y)
+        # Set image (transposed: time on X, frequency on Y)
         self.spectro_img.setImage(img_uint8.T)
         
-        # Skalierung auf echte Zeit/Frequenz-Achsen
+        # Scale to real time/frequency axes
         time_max = result.times[-1] if len(result.times) > 0 else 1
         freq_max = result.frequencies[-1] if len(result.frequencies) > 0 else 1
         
-        # Transform für korrekte Achsenskalierung
+        # Transform for correct axis scaling
         tr = pg.QtGui.QTransform()
         tr.scale(time_max / img_uint8.shape[1], freq_max / img_uint8.shape[0])
         self.spectro_img.setTransform(tr)
         
-        # Levels für bessere Darstellung setzen
+        # Set levels for better display
         self.spectro_img.setLevels([0, 255])
         
         self.spectro_plot.setXRange(0, self._audio.duration_seconds)
         self.spectro_plot.setYRange(0, min(self._audio.sample_rate / 2, 20000))
     
     def _on_selection_changed(self):
-        """Selektion geändert."""
+        """Selection changed."""
         if self._audio is None:
             return
         
@@ -672,28 +672,28 @@ class MainWindow(QMainWindow):
         end_samples = int(self._selection_end * self._audio.sample_rate)
         
         self.selection_label.setText(
-            f"Selektion: {format_time(self._selection_start)} – "
+            f"Selection: {format_time(self._selection_start)} – "
             f"{format_time(self._selection_end)} "
             f"({format_time(duration)} | {end_samples - start_samples:,} Samples)"
         )
         
-        # Play-Button aktivieren wenn gültige Selektion
+        # Enable play button if valid selection
         if self._audio is not None and duration > 0.01:
             self.btn_play_selection.setEnabled(True)
         else:
             self.btn_play_selection.setEnabled(False)
         
-        # FFT aktualisieren wenn Tab aktiv
+        # Update FFT if tab is active
         if self.tabs.currentIndex() == 1:
             self._update_fft()
     
     def _on_tab_changed(self, index: int):
-        """Tab gewechselt."""
+        """Tab changed."""
         if index == 1:  # FFT Tab
             self._update_fft()
     
     def _sync_from_waveform(self):
-        """Waveform-Zoom → Spektrogramm synchronisieren."""
+        """Synchronize waveform zoom → spectrogram."""
         if self._syncing or self._audio is None:
             return
         self._syncing = True
@@ -702,7 +702,7 @@ class MainWindow(QMainWindow):
         self._syncing = False
     
     def _sync_from_spectro(self):
-        """Spektrogramm-Zoom → Waveform synchronisieren."""
+        """Synchronize spectrogram zoom → waveform."""
         if self._syncing or self._audio is None:
             return
         self._syncing = True
@@ -711,24 +711,24 @@ class MainWindow(QMainWindow):
         self._syncing = False
     
     def _update_fft(self):
-        """FFT für selektierten Bereich berechnen."""
+        """Calculate FFT for selected region."""
         if self._audio is None:
             return
         
-        # Selektierten Bereich holen
+        # Get selected region
         start_sample = int(self._selection_start * self._audio.sample_rate)
         end_sample = int(self._selection_end * self._audio.sample_rate)
         data = self._audio.get_channel(0)[start_sample:end_sample]
         
         if len(data) < 64:
-            self.fft_info.setText("Selektion zu kurz für FFT")
+            self.fft_info.setText("Selection too short for FFT")
             return
         
-        # FFT Parameter
+        # FFT parameters
         fft_size = int(self.fft_size_combo.currentText())
         window_name = self.window_combo.currentText()
         
-        # Fenster
+        # Window
         if window_name == "hann":
             window = np.hanning(len(data))
         elif window_name == "hamming":
@@ -744,11 +744,11 @@ class MainWindow(QMainWindow):
         magnitude = np.abs(spectrum)
         magnitude_db = 20 * np.log10(magnitude + 1e-10)
         
-        # Frequenzachse
+        # Frequency axis
         freqs = np.fft.rfftfreq(fft_size, 1 / self._audio.sample_rate)
         
-        # Plot (X-Achse ist Log-skaliert)
-        self.fft_curve.setData(freqs[1:], magnitude_db[1:])  # Ohne DC
+        # Plot (X-axis is log-scaled)
+        self.fft_curve.setData(freqs[1:], magnitude_db[1:])  # Without DC
         f_max = min(self._audio.sample_rate / 2, 20000)
         self.fft_plot.setXRange(np.log10(20), np.log10(f_max), padding=0)
         self.fft_plot.setYRange(-100, 0)
@@ -756,30 +756,30 @@ class MainWindow(QMainWindow):
         # Info
         self.fft_info.setText(
             f"Samples: {len(data):,} | "
-            f"Frequenzauflösung: {self._audio.sample_rate / fft_size:.2f} Hz"
+            f"Frequency resolution: {self._audio.sample_rate / fft_size:.2f} Hz"
         )
     
     def _start_analysis(self):
-        """Terzbandanalyse starten."""
+        """Start third-octave analysis."""
         if self._audio is None:
             return
         
-        # Selektierten Bereich holen
+        # Get selected region
         start_sample = int(self._selection_start * self._audio.sample_rate)
         end_sample = int(self._selection_end * self._audio.sample_rate)
         data = self._audio.get_channel(0)[start_sample:end_sample]
         
         if len(data) < 1000:
-            QMessageBox.warning(self, "Hinweis", "Selektion zu kurz für Terzbandanalyse")
+            QMessageBox.warning(self, "Note", "Selection too short for third-octave analysis")
             return
         
         # UI
         self.btn_analyze.setEnabled(False)
         self.progress.show()
         self.progress.setValue(0)
-        self.status_label.setText("Berechne Terzbänder...")
+        self.status_label.setText("Calculating third-octave bands...")
         
-        # Worker starten
+        # Start worker
         self._worker = FilterWorker(data, self._audio.sample_rate)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_analysis_done)
@@ -787,21 +787,21 @@ class MainWindow(QMainWindow):
     
     @Slot(int, int)
     def _on_progress(self, current: int, total: int):
-        """Fortschritt aktualisieren."""
+        """Update progress."""
         self.progress.setMaximum(total)
         self.progress.setValue(current)
     
     @Slot(list)
     def _on_analysis_done(self, bands: list):
-        """Analyse fertig."""
+        """Analysis complete."""
         self._bands = bands
         self.btn_analyze.setEnabled(True)
         self.btn_export.setEnabled(True)
         self.btn_play.setEnabled(True)
         self.progress.hide()
-        self.status_label.setText(f"Analyse abgeschlossen - {len(bands)} Bänder")
+        self.status_label.setText(f"Analysis complete - {len(bands)} bands")
         
-        # Liste füllen
+        # Fill list
         self.band_list.clear()
         for band in bands:
             text = f"{format_frequency(band.center_frequency)}"
@@ -811,44 +811,44 @@ class MainWindow(QMainWindow):
             self.band_list.setCurrentRow(0)
     
     def _on_band_selected(self, row: int):
-        """Terzband ausgewählt."""
+        """Third-octave band selected."""
         if row < 0 or row >= len(self._bands):
             return
         
         band = self._bands[row]
         
-        # Zeit
+        # Time
         time = np.arange(len(band.filtered_signal)) / band.sample_rate
         
-        # Signal plotten
+        # Plot signal
         self.impulse_curve.setData(time, band.filtered_signal)
         
-        # Hüllkurve
+        # Envelope
         envelope = band.envelope(method="hilbert")
         self.envelope_curve.setData(time, envelope)
         
-        # Titel
+        # Title
         self.impulse_plot.setTitle(
-            f"Terzband {format_frequency(band.center_frequency)} | "
+            f"Third-Octave {format_frequency(band.center_frequency)} | "
             f"RMS: {format_db(band.rms_db())}"
         )
     
     def _apply_fade(self, data: np.ndarray, sample_rate: int, fade_ms: float = 10.0) -> np.ndarray:
-        """Wende Fade-In und Fade-Out an, um Klicks zu vermeiden."""
+        """Apply fade-in and fade-out to avoid clicks."""
         if len(data) == 0:
             return data
         
-        # Anzahl Samples für Fade
+        # Number of samples for fade
         fade_samples = int(sample_rate * fade_ms / 1000.0)
-        fade_samples = min(fade_samples, len(data) // 2)  # Maximal die Hälfte der Länge
+        fade_samples = min(fade_samples, len(data) // 2)  # Maximum half the length
         
         if fade_samples < 1:
             return data
         
-        # Kopie erstellen
+        # Create copy
         faded = data.copy()
         
-        # Fade-In (erste fade_samples)
+        # Fade-In (first fade_samples)
         if len(faded.shape) == 1:
             # Mono
             fade_in = np.linspace(0, 1, fade_samples)
@@ -858,7 +858,7 @@ class MainWindow(QMainWindow):
             fade_in = np.linspace(0, 1, fade_samples)
             faded[:fade_samples, :] *= fade_in[:, np.newaxis]
         
-        # Fade-Out (letzte fade_samples)
+        # Fade-Out (last fade_samples)
         if len(faded.shape) == 1:
             # Mono
             fade_out = np.linspace(1, 0, fade_samples)
@@ -871,37 +871,37 @@ class MainWindow(QMainWindow):
         return faded
     
     def _play_band(self):
-        """Ausgewähltes Band abspielen."""
+        """Play selected band."""
         row = self.band_list.currentRow()
         if row < 0 or row >= len(self._bands):
             return
         
         band = self._bands[row]
         
-        # Stoppe vorherige Wiedergabe
+        # Stop previous playback
         self._stop_playback()
         
         try:
             import sounddevice as sd
             
-            # Stop falls schon was läuft
+            # Stop if something is already playing
             sd.stop()
             
-            # Fade-In/Out anwenden um Klicks zu vermeiden
+            # Apply fade-in/out to avoid clicks
             faded_data = self._apply_fade(band.filtered_signal, band.sample_rate, fade_ms=10.0)
             
-            # Abspielen
+            # Play
             self._band_stream = sd.play(faded_data.astype(np.float32), band.sample_rate)
             
             self.btn_stop.setEnabled(True)
-            self.status_label.setText(f"▶ Spiele {format_frequency(band.center_frequency)}...")
+            self.status_label.setText(f"▶ Playing {format_frequency(band.center_frequency)}...")
             
         except Exception as e:
-            QMessageBox.warning(self, "Wiedergabe-Fehler", str(e))
+            QMessageBox.warning(self, "Playback Error", str(e))
             self._stop_playback()
     
     def _stop_playback(self):
-        """Wiedergabe stoppen."""
+        """Stop playback."""
         try:
             import sounddevice as sd
             sd.stop()
@@ -913,48 +913,48 @@ class MainWindow(QMainWindow):
         self.status_label.setText("")
     
     def _play_selection(self):
-        """Selektierten Bereich abspielen."""
+        """Play selected region."""
         if self._audio is None:
             return
         
-        # Stoppe vorherige Wiedergabe
+        # Stop previous playback
         self._stop_selection_playback()
         
         try:
             import sounddevice as sd
             
-            # Selektierten Bereich holen
+            # Get selected region
             start_sample = int(self._selection_start * self._audio.sample_rate)
             end_sample = int(self._selection_end * self._audio.sample_rate)
             
             if end_sample <= start_sample:
                 return
             
-            # Daten extrahieren
+            # Extract data
             if self._audio.channels == 1:
                 data = self._audio.data[start_sample:end_sample]
             else:
-                # Stereo: beide Kanäle
+                # Stereo: both channels
                 data = self._audio.data[start_sample:end_sample]
             
-            # Fade-In/Out anwenden um Klicks zu vermeiden
+            # Apply fade-in/out to avoid clicks
             faded_data = self._apply_fade(data, self._audio.sample_rate, fade_ms=10.0)
             
-            # Abspielen
+            # Play
             self._selection_stream = sd.play(faded_data.astype(np.float32), self._audio.sample_rate)
             
-            # UI aktualisieren
+            # Update UI
             self.btn_play_selection.setEnabled(False)
             self.btn_stop_selection.setEnabled(True)
             duration = self._selection_end - self._selection_start
-            self.status_label.setText(f"▶ Wiedergabe selektierter Bereich ({format_time(duration)})")
+            self.status_label.setText(f"▶ Playing selected region ({format_time(duration)})")
             
         except Exception as e:
-            QMessageBox.warning(self, "Wiedergabe-Fehler", str(e))
+            QMessageBox.warning(self, "Playback Error", str(e))
             self._stop_selection_playback()
     
     def _stop_selection_playback(self):
-        """Wiedergabe des selektierten Bereichs stoppen."""
+        """Stop playback of selected region."""
         try:
             import sounddevice as sd
             sd.stop()
@@ -962,13 +962,13 @@ class MainWindow(QMainWindow):
         except:
             pass
         
-        # UI aktualisieren
+        # Update UI
         self.btn_play_selection.setEnabled(True)
         self.btn_stop_selection.setEnabled(False)
         self.status_label.setText("")
     
     def _export_band(self):
-        """Ausgewähltes Band exportieren."""
+        """Export selected band."""
         row = self.band_list.currentRow()
         if row < 0 or row >= len(self._bands):
             return
@@ -976,17 +976,17 @@ class MainWindow(QMainWindow):
         band = self._bands[row]
         
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Terzband exportieren",
-            f"terzband_{int(band.center_frequency)}Hz.wav",
+            self, "Export Third-Octave Band",
+            f"third_octave_{int(band.center_frequency)}Hz.wav",
             "WAV (*.wav)"
         )
         
         if filename:
             try:
                 save_audio(band.filtered_signal, filename, band.sample_rate)
-                QMessageBox.information(self, "Export", f"Exportiert nach:\n{filename}")
+                QMessageBox.information(self, "Export", f"Exported to:\n{filename}")
             except Exception as e:
-                QMessageBox.critical(self, "Fehler", str(e))
+                QMessageBox.critical(self, "Error", str(e))
     
     def dragEnterEvent(self, event):
         """Drag & Drop."""
@@ -997,7 +997,7 @@ class MainWindow(QMainWindow):
                     return
     
     def dropEvent(self, event):
-        """Datei gedroppt."""
+        """File dropped."""
         for url in event.mimeData().urls():
             filepath = url.toLocalFile()
             if filepath.lower().endswith(('.wav', '.mp3')):
@@ -1006,55 +1006,55 @@ class MainWindow(QMainWindow):
     
 
     def _start_flutter_analysis(self):
-        """Room-Analysis starten."""
+        """Start Room Analysis."""
         if self._audio is None:
             return
         
-        # Selektierten Bereich holen
+        # Get selected region
         start_sample = int(self._selection_start * self._audio.sample_rate)
         end_sample = int(self._selection_end * self._audio.sample_rate)
         data = self._audio.get_channel(0)[start_sample:end_sample]
         
         if len(data) < 1000:
-            QMessageBox.warning(self, "Hinweis", "Selektion zu kurz für Room-Analysis")
+            QMessageBox.warning(self, "Note", "Selection too short for Room Analysis")
             return
         
-        # UI aktualisieren
+        # Update UI
         self.btn_flutter_analyze.setEnabled(False)
-        self.flutter_info_label.setText("Analyse läuft...")
-        self.status_label.setText("Berechne Room-Analysis...")
+        self.flutter_info_label.setText("Analysis running...")
+        self.status_label.setText("Calculating Room Analysis...")
         QApplication.processEvents()
         
         try:
-            # Daten an Widget übergeben und analysieren
+            # Pass data to widget and analyze
             self.flutter_widget.set_audio_data(data, self._audio.sample_rate)
             self.flutter_widget.analyze()
             
-            # Ergebnis-Info
+            # Result info
             if self.flutter_widget._result and self.flutter_widget._result.detected:
                 self.flutter_info_label.setText(
-                    f"Resonanzen/Echos erkannt: {self.flutter_widget._result.main_distance_m:.2f} m | "
+                    f"Resonances/Echos detected: {self.flutter_widget._result.main_distance_m:.2f} m | "
                     f"{self.flutter_widget._result.severity}"
                 )
             else:
-                self.flutter_info_label.setText("Keine signifikanten Resonanzen erkannt")
+                self.flutter_info_label.setText("No significant resonances detected")
             
-            self.status_label.setText("Room-Analysis abgeschlossen")
+            self.status_label.setText("Room Analysis complete")
             
         except Exception as e:
-            QMessageBox.warning(self, "Fehler", f"Analyse fehlgeschlagen: {e}")
-            self.flutter_info_label.setText("Analyse fehlgeschlagen")
+            QMessageBox.warning(self, "Error", f"Analysis failed: {e}")
+            self.flutter_info_label.setText("Analysis failed")
         
         finally:
             self.btn_flutter_analyze.setEnabled(True)
     
     def closeEvent(self, event):
-        """Beim Schließen."""
-        # Wiedergabe stoppen
+        """On close."""
+        # Stop playback
         self._stop_playback()
         self._stop_selection_playback()
         
-        # Worker beenden
+        # Terminate worker
         if self._worker and self._worker.isRunning():
             self._worker.quit()
             self._worker.wait()

@@ -1,7 +1,7 @@
 """
-Utility-Modul für Audio Analyzer.
+Utility module for Audio Analyzer.
 
-Enthält Hilfsfunktionen die sowohl von Core als auch GUI verwendet werden.
+Contains helper functions used by both Core and GUI.
 """
 
 from .formatting import (
