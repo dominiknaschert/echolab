@@ -1,8 +1,8 @@
 """
-GUI-Modul für Audio Analyzer.
+GUI module for Audio Analyzer.
 
-Verwendet PySide6 und pyqtgraph für interaktive Visualisierung.
-Strikte Trennung von DSP-Logik - dieses Modul enthält nur Darstellung.
+Uses PySide6 and pyqtgraph for interactive visualization.
+Strict separation from DSP logic - this module only contains presentation.
 """
 
 from .main_window import MainWindow

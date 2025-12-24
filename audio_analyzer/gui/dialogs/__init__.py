@@ -1,5 +1,5 @@
 """
-Dialoge für Audio Analyzer.
+Dialogs for Audio Analyzer.
 """
 
 from .audio_info_dialog import AudioInfoDialog

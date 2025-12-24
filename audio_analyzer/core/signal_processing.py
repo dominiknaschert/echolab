@@ -1,13 +1,13 @@
 """
-Allgemeine Signalverarbeitung
+General Signal Processing
 
-Enthält grundlegende Funktionen zur Signalmanipulation.
-Alle Funktionen sind EXPLIZIT - keine automatischen Konvertierungen.
+Contains fundamental functions for signal manipulation.
+All functions are EXPLICIT - no automatic conversions.
 
-Technische Annahmen:
-- Resampling verwendet scipy.signal.resample_poly für Anti-Aliasing
-- Downmix erfolgt als arithmetisches Mittel (keine Energiekompensation)
-- Alle Operationen arbeiten auf Kopien, Originaldaten bleiben unverändert
+Technical assumptions:
+- Resampling uses scipy.signal.resample_poly for anti-aliasing
+- Downmix is performed as arithmetic mean (no energy compensation)
+- All operations work on copies, original data remains unchanged
 """
 
 import numpy as np
@@ -21,27 +21,27 @@ def resample_audio(
     target_sr: int,
 ) -> np.ndarray:
     """
-    Resample Audiodaten auf neue Samplerate.
+    Resample audio data to new sample rate.
     
-    Verwendet scipy.signal.resample_poly mit automatischer Anti-Aliasing-Filterung.
+    Uses scipy.signal.resample_poly with automatic anti-aliasing filtering.
     
-    Technische Details:
-    - Polyphasen-Resampling für effiziente Berechnung
-    - Anti-Aliasing-Filter: Kaiser-Window FIR
-    - Gruppenlaufzeit wird durch Padding kompensiert
+    Technical details:
+    - Polyphase resampling for efficient computation
+    - Anti-aliasing filter: Kaiser window FIR
+    - Group delay is compensated by padding
     
     Args:
-        data: Audiodaten (1D oder 2D)
-        original_sr: Original-Samplerate
-        target_sr: Ziel-Samplerate
+        data: Audio data (1D or 2D)
+        original_sr: Original sample rate
+        target_sr: Target sample rate
         
     Returns:
-        Resampelte Audiodaten (gleiche Dimensionalität)
+        Resampled audio data (same dimensionality)
     """
     if original_sr == target_sr:
         return data.copy()
     
-    # Bestimme Upsampling/Downsampling-Faktoren
+    # Determine upsampling/downsampling factors
     gcd = np.gcd(original_sr, target_sr)
     up = target_sr // gcd
     down = original_sr // gcd
@@ -49,7 +49,7 @@ def resample_audio(
     if data.ndim == 1:
         return signal.resample_poly(data, up, down).astype(data.dtype)
     else:
-        # Resample jeden Kanal separat
+        # Resample each channel separately
         result = np.zeros(
             (int(len(data) * target_sr / original_sr), data.shape[1]),
             dtype=data.dtype
@@ -64,34 +64,34 @@ def downmix_to_mono(
     method: Literal["average", "left", "right", "side", "mid"] = "average"
 ) -> np.ndarray:
     """
-    Konvertiere Stereo zu Mono.
+    Convert stereo to mono.
     
-    KEIN automatischer Downmix - diese Funktion muss explizit aufgerufen werden.
+    NO automatic downmix - this function must be called explicitly.
     
-    Methoden:
-    - average: (L + R) / 2 - Standard, keine Energiekompensation
-    - left: Nur linker Kanal
-    - right: Nur rechter Kanal
-    - mid: (L + R) / 2 - Identisch zu average, semantisch "Mitte"
-    - side: (L - R) / 2 - Seitensignal (Stereodifferenz)
+    Methods:
+    - average: (L + R) / 2 - Standard, no energy compensation
+    - left: Left channel only
+    - right: Right channel only
+    - mid: (L + R) / 2 - Identical to average, semantically "mid"
+    - side: (L - R) / 2 - Side signal (stereo difference)
     
-    Hinweis zu Energiekompensation:
-    Bei korreliertem Material (z.B. zentrierte Instrumente) würde der
-    average-Downmix zu 6 dB Pegelreduktion führen. Diese Korrektur wird
-    NICHT automatisch angewendet, da sie von der Korrelation abhängt.
+    Note on energy compensation:
+    For correlated material (e.g., centered instruments), the
+    average downmix would lead to 6 dB level reduction. This correction is
+    NOT automatically applied, as it depends on correlation.
     
     Args:
-        data: Stereo-Audiodaten, Shape: (samples, 2)
-        method: Downmix-Methode
+        data: Stereo audio data, Shape: (samples, 2)
+        method: Downmix method
         
     Returns:
-        Mono-Audiodaten, Shape: (samples,)
+        Mono audio data, Shape: (samples,)
     """
     if data.ndim == 1:
-        return data.copy()  # Bereits Mono
+        return data.copy()  # Already mono
     
     if data.shape[1] != 2:
-        raise ValueError(f"Erwartet Stereo (2 Kanäle), erhalten: {data.shape[1]}")
+        raise ValueError(f"Expected stereo (2 channels), got: {data.shape[1]}")
     
     left = data[:, 0]
     right = data[:, 1]
@@ -105,7 +105,7 @@ def downmix_to_mono(
     elif method == "side":
         return (left - right) / 2
     else:
-        raise ValueError(f"Unbekannte Methode: {method}")
+        raise ValueError(f"Unknown method: {method}")
 
 
 def normalize_audio(
@@ -115,19 +115,19 @@ def normalize_audio(
     target_rms_db: float = -20.0,
 ) -> tuple[np.ndarray, float]:
     """
-    Normalisiere Audiodaten.
+    Normalize audio data.
     
-    Diese Funktion verändert die Amplitude des Signals.
-    Der Normalisierungsfaktor wird zurückgegeben für Dokumentation.
+    This function modifies the amplitude of the signal.
+    The normalization factor is returned for documentation.
     
     Args:
-        data: Audiodaten
-        target_peak: Ziel-Peakwert bei peak-Normalisierung (0.0-1.0)
-        reference: Normalisierungsreferenz ("peak" oder "rms")
-        target_rms_db: Ziel-RMS in dB bei RMS-Normalisierung
+        data: Audio data
+        target_peak: Target peak value for peak normalization (0.0-1.0)
+        reference: Normalization reference ("peak" or "rms")
+        target_rms_db: Target RMS in dB for RMS normalization
         
     Returns:
-        Tuple aus (normalisierte Daten, angewendeter Faktor)
+        Tuple of (normalized data, applied factor)
     """
     if reference == "peak":
         current_peak = compute_peak(data)
@@ -139,23 +139,23 @@ def normalize_audio(
         factor_db = target_rms_db - current_rms_db
         factor = 10 ** (factor_db / 20)
     else:
-        raise ValueError(f"Unbekannte Referenz: {reference}")
+        raise ValueError(f"Unknown reference: {reference}")
     
     return data * factor, factor
 
 
 def compute_rms(data: np.ndarray, as_db: bool = False) -> float:
     """
-    Berechne RMS (Root Mean Square) des Signals.
+    Compute RMS (Root Mean Square) of the signal.
     
-    Bei Mehrkanal-Audio wird der RMS über alle Kanäle berechnet.
+    For multi-channel audio, RMS is computed over all channels.
     
     Args:
-        data: Audiodaten
-        as_db: Wenn True, Rückgabe in dB (Referenz: 1.0)
+        data: Audio data
+        as_db: If True, return in dB (reference: 1.0)
         
     Returns:
-        RMS-Wert (linear oder dB)
+        RMS value (linear or dB)
     """
     rms = np.sqrt(np.mean(data ** 2))
     
@@ -169,14 +169,14 @@ def compute_rms(data: np.ndarray, as_db: bool = False) -> float:
 
 def compute_peak(data: np.ndarray, as_db: bool = False) -> float:
     """
-    Berechne Spitzenwert (absoluter Maximalwert) des Signals.
+    Compute peak value (absolute maximum) of the signal.
     
     Args:
-        data: Audiodaten
-        as_db: Wenn True, Rückgabe in dB (Referenz: 1.0)
+        data: Audio data
+        as_db: If True, return in dB (reference: 1.0)
         
     Returns:
-        Peak-Wert (linear oder dB)
+        Peak value (linear or dB)
     """
     peak = np.max(np.abs(data))
     
@@ -194,24 +194,24 @@ def apply_window(
     kaiser_beta: float = 14.0,
 ) -> np.ndarray:
     """
-    Wende Fensterfunktion auf Signal an.
+    Apply window function to signal.
     
-    Fensterfunktionen reduzieren spektrale Leckage bei der FFT.
+    Window functions reduce spectral leakage in FFT.
     
-    Eigenschaften der Fenster:
-    - hann: Guter Kompromiss, -31.5 dB Seitenkeulen
-    - hamming: Bessere Seitenkeulendämpfung (-43 dB), breitere Hauptkeule
-    - blackman: Sehr gute Dämpfung (-58 dB), breiteste Hauptkeule
-    - kaiser: Einstellbar via beta, höher = mehr Dämpfung
-    - rectangular: Kein Fenster, maximale Leckage
+    Window properties:
+    - hann: Good compromise, -31.5 dB side lobes
+    - hamming: Better side lobe suppression (-43 dB), wider main lobe
+    - blackman: Very good suppression (-58 dB), widest main lobe
+    - kaiser: Adjustable via beta, higher = more suppression
+    - rectangular: No window, maximum leakage
     
     Args:
-        data: Eingangssignal
-        window_type: Art der Fensterfunktion
-        kaiser_beta: Beta-Parameter für Kaiser-Fenster
+        data: Input signal
+        window_type: Type of window function
+        kaiser_beta: Beta parameter for Kaiser window
         
     Returns:
-        Gefenstertes Signal
+        Windowed signal
     """
     n = len(data) if data.ndim == 1 else data.shape[0]
     
@@ -236,16 +236,16 @@ def apply_window(
 
 def compute_crest_factor(data: np.ndarray) -> float:
     """
-    Berechne Crest Factor (Verhältnis Peak zu RMS).
+    Compute crest factor (ratio of peak to RMS).
     
-    Der Crest Factor beschreibt die "Spitzigkeit" eines Signals.
-    - Sinuston: ~1.414 (3 dB)
-    - Weißes Rauschen: ~3-4
-    - Stark komprimierte Musik: ~2-3
-    - Dynamische Klassik: ~10-20
+    The crest factor describes the "peakiness" of a signal.
+    - Sine tone: ~1.414 (3 dB)
+    - White noise: ~3-4
+    - Heavily compressed music: ~2-3
+    - Dynamic classical: ~10-20
     
     Returns:
-        Crest Factor (linear, nicht dB)
+        Crest factor (linear, not dB)
     """
     peak = compute_peak(data)
     rms = compute_rms(data)
@@ -258,26 +258,26 @@ def compute_crest_factor(data: np.ndarray) -> float:
 
 def compute_dc_offset(data: np.ndarray) -> float:
     """
-    Berechne DC-Offset (Gleichanteil) des Signals.
+    Compute DC offset (DC component) of the signal.
     
-    Ein signifikanter DC-Offset (>0.01) kann auf Aufnahmeprobleme
-    oder beschädigte Dateien hinweisen.
+    A significant DC offset (>0.01) may indicate recording problems
+    or corrupted files.
     
     Returns:
-        DC-Offset als Mittelwert der Samples
+        DC offset as mean of samples
     """
     return np.mean(data)
 
 
 def remove_dc_offset(data: np.ndarray) -> np.ndarray:
     """
-    Entferne DC-Offset aus Signal.
+    Remove DC offset from signal.
     
-    Subtrahiert den Mittelwert von allen Samples.
-    Dies ist eine explizite Operation, keine automatische Korrektur.
+    Subtracts the mean from all samples.
+    This is an explicit operation, not an automatic correction.
     
     Returns:
-        Signal ohne DC-Offset
+        Signal without DC offset
     """
     return data - np.mean(data, axis=0)
 

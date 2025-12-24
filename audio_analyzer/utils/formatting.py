@@ -1,7 +1,7 @@
 """
-Formatierungsfunktionen für Anzeige.
+Formatting functions for display.
 
-Konvertiert numerische Werte in lesbare Strings.
+Converts numerical values to readable strings.
 """
 
 from typing import Optional
@@ -9,14 +9,14 @@ from typing import Optional
 
 def format_time(seconds: float, show_ms: bool = True) -> str:
     """
-    Formatiere Zeit in lesbares Format.
+    Format time in readable format.
     
     Args:
-        seconds: Zeit in Sekunden
-        show_ms: Zeige Millisekunden
+        seconds: Time in seconds
+        show_ms: Show milliseconds
         
     Returns:
-        Formatierter String (z.B. "1:23.456" oder "1:23")
+        Formatted string (e.g. "1:23.456" or "1:23")
     """
     if seconds < 0:
         sign = "-"
@@ -35,13 +35,13 @@ def format_time(seconds: float, show_ms: bool = True) -> str:
 
 def format_frequency(hz: float) -> str:
     """
-    Formatiere Frequenz in lesbares Format.
+    Format frequency in readable format.
     
     Args:
-        hz: Frequenz in Hz
+        hz: Frequency in Hz
         
     Returns:
-        Formatierter String (z.B. "1.5 kHz" oder "250 Hz")
+        Formatted string (e.g. "1.5 kHz" or "250 Hz")
     """
     if hz >= 1000:
         return f"{hz/1000:.1f} kHz"
@@ -51,14 +51,14 @@ def format_frequency(hz: float) -> str:
 
 def format_db(db: float, precision: int = 1) -> str:
     """
-    Formatiere dB-Wert.
+    Format dB value.
     
     Args:
-        db: Pegel in dB
-        precision: Nachkommastellen
+        db: Level in dB
+        precision: Decimal places
         
     Returns:
-        Formatierter String (z.B. "-12.3 dB")
+        Formatted string (e.g. "-12.3 dB")
     """
     if db == float('-inf'):
         return "-∞ dB"
@@ -71,15 +71,15 @@ def samples_to_time_str(
     show_samples: bool = True,
 ) -> str:
     """
-    Konvertiere Samples zu Zeit-String mit optionaler Sample-Anzeige.
+    Convert samples to time string with optional sample display.
     
     Args:
-        samples: Anzahl Samples
-        sample_rate: Samplerate
-        show_samples: Zeige auch Sample-Anzahl
+        samples: Number of samples
+        sample_rate: Sample rate
+        show_samples: Also show sample count
         
     Returns:
-        Formatierter String (z.B. "1:23.456 (65432 samples)")
+        Formatted string (e.g. "1:23.456 (65432 samples)")
     """
     time_sec = samples / sample_rate
     time_str = format_time(time_sec)
@@ -91,13 +91,13 @@ def samples_to_time_str(
 
 def format_sample_rate(sr: int) -> str:
     """
-    Formatiere Samplerate.
+    Format sample rate.
     
     Args:
-        sr: Samplerate in Hz
+        sr: Sample rate in Hz
         
     Returns:
-        Formatierter String (z.B. "44.1 kHz" oder "48 kHz")
+        Formatted string (e.g. "44.1 kHz" or "48 kHz")
     """
     if sr % 1000 == 0:
         return f"{sr // 1000} kHz"
@@ -107,13 +107,13 @@ def format_sample_rate(sr: int) -> str:
 
 def format_duration(seconds: float) -> str:
     """
-    Formatiere Dauer für Anzeige.
+    Format duration for display.
     
     Args:
-        seconds: Dauer in Sekunden
+        seconds: Duration in seconds
         
     Returns:
-        Formatierter String (z.B. "3:45.2" oder "0:01.5")
+        Formatted string (e.g. "3:45.2" or "0:01.5")
     """
     minutes = int(seconds // 60)
     secs = seconds % 60
@@ -126,18 +126,18 @@ def format_duration(seconds: float) -> str:
 
 def format_channels(num_channels: int) -> str:
     """
-    Formatiere Kanalanzahl.
+    Format channel count.
     
     Args:
-        num_channels: Anzahl Kanäle
+        num_channels: Number of channels
         
     Returns:
-        "Mono" oder "Stereo" oder "X Kanäle"
+        "Mono" or "Stereo" or "X Channels"
     """
     if num_channels == 1:
         return "Mono"
     elif num_channels == 2:
         return "Stereo"
     else:
-        return f"{num_channels} Kanäle"
+        return f"{num_channels} Channels"
 

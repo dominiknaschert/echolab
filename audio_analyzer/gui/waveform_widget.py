@@ -1,12 +1,12 @@
 """
-Waveform-Widget
+Waveform Widget
 
-Zeigt Audiosignal im Zeitbereich mit:
-- Zoom und Pan
-- Präzise Bereichsmarkierung
-- Zeit- und Sample-Anzeige
+Displays audio signal in time domain with:
+- Zoom and pan
+- Precise region marking
+- Time and sample display
 
-Verwendet pyqtgraph für performante Darstellung großer Datenmengen.
+Uses pyqtgraph for performant display of large datasets.
 """
 
 from typing import Optional, Callable
@@ -24,9 +24,9 @@ from ..utils.formatting import format_time, samples_to_time_str
 
 class SelectionRegion(pg.LinearRegionItem):
     """
-    Erweiterte Region für Zeitselektion.
+    Extended region for time selection.
     
-    Sendet Signale bei Änderung und zeigt Zeit/Sample-Information.
+    Emits signals on change and displays time/sample information.
     """
     
     selectionChanged = Signal(float, float)  # start_time, end_time
@@ -62,17 +62,17 @@ class SelectionRegion(pg.LinearRegionItem):
 
 class WaveformWidget(QWidget):
     """
-    Widget zur Darstellung von Audio-Waveforms.
+    Widget for displaying audio waveforms.
     
     Features:
-    - Zoombare Zeitachse (Mausrad + Drag)
-    - Kanalauswahl bei Stereo
-    - Bereichsmarkierung mit Zeit- und Sample-Anzeige
-    - Schnelle Darstellung durch Downsampling bei großem Zoom-Out
+    - Zoomable time axis (mouse wheel + drag)
+    - Channel selection for stereo
+    - Region marking with time and sample display
+    - Fast display through downsampling at large zoom-out
     
     Signals:
         selectionChanged: (start_seconds, end_seconds, start_samples, end_samples)
-        viewChanged: (start_time, end_time) - Für Synchronisation mit Spektrogramm
+        viewChanged: (start_time, end_time) - For synchronization with spectrogram
     """
     
     selectionChanged = Signal(float, float, int, int)
@@ -100,9 +100,9 @@ class WaveformWidget(QWidget):
         toolbar_layout.setContentsMargins(8, 4, 8, 4)
         
         # Channel selector
-        toolbar_layout.addWidget(QLabel("Kanal:"))
+        toolbar_layout.addWidget(QLabel("Channel:"))
         self.channel_combo = QComboBox()
-        self.channel_combo.addItems(["Links", "Rechts"])
+        self.channel_combo.addItems(["Left", "Right"])
         self.channel_combo.setEnabled(False)
         self.channel_combo.currentIndexChanged.connect(self._on_channel_changed)
         toolbar_layout.addWidget(self.channel_combo)
@@ -110,23 +110,23 @@ class WaveformWidget(QWidget):
         toolbar_layout.addStretch()
         
         # Selection info
-        self.selection_label = QLabel("Keine Selektion")
+        self.selection_label = QLabel("No selection")
         self.selection_label.setStyleSheet("font-family: monospace;")
         toolbar_layout.addWidget(self.selection_label)
         
         toolbar_layout.addStretch()
         
         # Zoom controls
-        self.btn_zoom_fit = QPushButton("Anpassen")
+        self.btn_zoom_fit = QPushButton("Fit")
         self.btn_zoom_fit.clicked.connect(self._zoom_to_fit)
         toolbar_layout.addWidget(self.btn_zoom_fit)
         
-        self.btn_zoom_selection = QPushButton("Zoom Selektion")
+        self.btn_zoom_selection = QPushButton("Zoom Selection")
         self.btn_zoom_selection.clicked.connect(self._zoom_to_selection)
         self.btn_zoom_selection.setEnabled(False)
         toolbar_layout.addWidget(self.btn_zoom_selection)
         
-        self.btn_clear_selection = QPushButton("Selektion löschen")
+        self.btn_clear_selection = QPushButton("Clear Selection")
         self.btn_clear_selection.clicked.connect(self._clear_selection)
         self.btn_clear_selection.setEnabled(False)
         toolbar_layout.addWidget(self.btn_clear_selection)
@@ -138,7 +138,7 @@ class WaveformWidget(QWidget):
         self.plot_widget.setBackground('#1a1a2e')
         self.plot_widget.showGrid(x=True, y=True, alpha=0.3)
         self.plot_widget.setLabel('left', 'Amplitude')
-        self.plot_widget.setLabel('bottom', 'Zeit', units='s')
+        self.plot_widget.setLabel('bottom', 'Time', units='s')
         
         # Enable mouse interaction
         self.plot_widget.setMouseEnabled(x=True, y=False)

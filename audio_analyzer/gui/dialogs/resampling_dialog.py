@@ -1,8 +1,8 @@
 """
 Downmix Dialog
 
-Erlaubt dem Nutzer die bewusste Entscheidung über Kanalbehandlung.
-Keine automatischen Manipulationen!
+Allows the user to make a conscious decision about channel handling.
+No automatic manipulations!
 """
 
 from PySide6.QtWidgets import (
@@ -26,14 +26,14 @@ class ResamplingDialog(QDialog):
     def __init__(self, audio: AudioFile, parent=None):
         super().__init__(parent)
         self.audio = audio
-        self.setWindowTitle("Signalkonvertierung")
+        self.setWindowTitle("Signal Conversion")
         self.setMinimumWidth(400)
         
         layout = QVBoxLayout(self)
         
         # Current info
         info_label = QLabel(
-            f"Aktuelle Datei: {format_sample_rate(audio.sample_rate)}, "
+            f"Current file: {format_sample_rate(audio.sample_rate)}, "
             f"{format_channels(audio.channels)}"
         )
         info_label.setStyleSheet("font-weight: bold; padding: 8px;")
@@ -41,8 +41,8 @@ class ResamplingDialog(QDialog):
         
         # Warning
         warning = QLabel(
-            "⚠ Kanalbehandlung verändert die Audiodaten.\n"
-            "Für reproduzierbare Analyse sollten Originaldaten verwendet werden."
+            "⚠ Channel handling modifies audio data.\n"
+            "For reproducible analysis, original data should be used."
         )
         warning.setStyleSheet("color: #f0ad4e; padding: 8px;")
         warning.setWordWrap(True)
@@ -50,31 +50,31 @@ class ResamplingDialog(QDialog):
         
         # Channel options (only for stereo)
         if audio.channels == 2:
-            channel_group = QGroupBox("Kanalbehandlung")
+            channel_group = QGroupBox("Channel Handling")
             channel_layout = QVBoxLayout(channel_group)
             
             self.channel_button_group = QButtonGroup(self)
             
-            self.rb_keep_stereo = QRadioButton("Stereo beibehalten")
+            self.rb_keep_stereo = QRadioButton("Keep Stereo")
             self.rb_keep_stereo.setChecked(True)
             self.channel_button_group.addButton(self.rb_keep_stereo, 0)
             channel_layout.addWidget(self.rb_keep_stereo)
             
-            self.rb_left = QRadioButton("Nur linker Kanal")
+            self.rb_left = QRadioButton("Left Channel Only")
             self.channel_button_group.addButton(self.rb_left, 1)
             channel_layout.addWidget(self.rb_left)
             
-            self.rb_right = QRadioButton("Nur rechter Kanal")
+            self.rb_right = QRadioButton("Right Channel Only")
             self.channel_button_group.addButton(self.rb_right, 2)
             channel_layout.addWidget(self.rb_right)
             
-            self.rb_downmix = QRadioButton("Downmix zu Mono: (L+R)/2")
+            self.rb_downmix = QRadioButton("Downmix to Mono: (L+R)/2")
             self.channel_button_group.addButton(self.rb_downmix, 3)
             channel_layout.addWidget(self.rb_downmix)
             
             note = QLabel(
-                "Hinweis: Downmix erfolgt ohne Energiekompensation.\n"
-                "Bei korreliertem Material kann dies zu Pegelreduktion führen."
+                "Note: Downmix is performed without energy compensation.\n"
+                "For correlated material, this can lead to level reduction."
             )
             note.setStyleSheet("color: #888; font-size: 11px;")
             channel_layout.addWidget(note)
@@ -87,11 +87,11 @@ class ResamplingDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         
-        cancel_btn = QPushButton("Abbrechen")
+        cancel_btn = QPushButton("Cancel")
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
         
-        apply_btn = QPushButton("Anwenden")
+        apply_btn = QPushButton("Apply")
         apply_btn.clicked.connect(self.accept)
         btn_layout.addWidget(apply_btn)
         

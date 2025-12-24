@@ -1,12 +1,12 @@
 """
-Terzband-Analyse Widget
+Third-Octave Analysis Widget
 
-Zeigt:
-- Zeitabhängige Terzband-Impulsantworten als Heatmap
-- Einzelne Terzband-Zeitverläufe
-- Export- und Wiedergabe-Funktionen
+Displays:
+- Time-dependent third-octave impulse responses as heatmap
+- Individual third-octave time courses
+- Export and playback functions
 
-Basiert auf der IEC 61260 Filterbank.
+Based on IEC 61260 filterbank.
 """
 
 from typing import Optional, Callable
@@ -79,18 +79,18 @@ class FilterbankWorker(QThread):
 
 class ThirdOctaveWidget(QWidget):
     """
-    Widget für Terzband-Analyse und Impulsantwort-Darstellung.
+    Widget for third-octave analysis and impulse response display.
     
     Features:
-    - Berechnung der Terzbandfilterung für selektierte Bereiche
-    - Heatmap-Darstellung aller Bänder über Zeit
-    - Einzeldarstellung jedes Terzbands
-    - Export als WAV
-    - Wiedergabe einzelner Bänder
+    - Calculation of third-octave filtering for selected regions
+    - Heatmap display of all bands over time
+    - Individual display of each third-octave band
+    - Export as WAV
+    - Playback of individual bands
     
     Signals:
-        analysisComplete: Emittiert wenn Analyse abgeschlossen
-        bandSelected: Emittiert wenn ein Band ausgewählt wird (frequency)
+        analysisComplete: Emitted when analysis is complete
+        bandSelected: Emitted when a band is selected (frequency)
     """
     
     analysisComplete = Signal()
@@ -121,7 +121,7 @@ class ThirdOctaveWidget(QWidget):
         toolbar_layout.setContentsMargins(8, 4, 8, 4)
         
         # Analysis settings
-        toolbar_layout.addWidget(QLabel("Zeitauflösung:"))
+        toolbar_layout.addWidget(QLabel("Time Resolution:"))
         self.time_res_spin = QSpinBox()
         self.time_res_spin.setRange(1, 100)
         self.time_res_spin.setValue(10)
@@ -130,10 +130,10 @@ class ThirdOctaveWidget(QWidget):
         
         toolbar_layout.addWidget(QLabel("Phase:"))
         self.phase_combo = QComboBox()
-        self.phase_combo.addItems(["Minimum Phase (kausal)", "Zero Phase (linear)"])
+        self.phase_combo.addItems(["Minimum Phase (causal)", "Zero Phase (linear)"])
         self.phase_combo.setToolTip(
-            "Minimum Phase: Kausale IIR-Filterung, nichtlineare Phase\n"
-            "Zero Phase: Vorwärts-Rückwärts-Filterung, lineare Phase, nicht kausal"
+            "Minimum Phase: Causal IIR filtering, nonlinear phase\n"
+            "Zero Phase: Forward-backward filtering, linear phase, non-causal"
         )
         toolbar_layout.addWidget(self.phase_combo)
         
@@ -146,7 +146,7 @@ class ThirdOctaveWidget(QWidget):
         toolbar_layout.addWidget(self.progress_bar)
         
         # Action buttons
-        self.btn_analyze = QPushButton("Analyse starten")
+        self.btn_analyze = QPushButton("Start Analysis")
         self.btn_analyze.clicked.connect(self._start_analysis)
         self.btn_analyze.setEnabled(False)
         toolbar_layout.addWidget(self.btn_analyze)
@@ -161,7 +161,7 @@ class ThirdOctaveWidget(QWidget):
         band_layout = QVBoxLayout(band_frame)
         band_layout.setContentsMargins(4, 4, 4, 4)
         
-        band_layout.addWidget(QLabel("Terzbänder (IEC 61260):"))
+        band_layout.addWidget(QLabel("Third-Octave Bands (IEC 61260):"))
         self.band_list = QListWidget()
         self.band_list.currentRowChanged.connect(self._on_band_selected)
         band_layout.addWidget(self.band_list)
@@ -173,7 +173,7 @@ class ThirdOctaveWidget(QWidget):
         self.btn_export.setEnabled(False)
         btn_layout.addWidget(self.btn_export)
         
-        self.btn_play = QPushButton("▶ Abspielen")
+        self.btn_play = QPushButton("▶ Play")
         self.btn_play.clicked.connect(self._play_band)
         self.btn_play.setEnabled(False)
         btn_layout.addWidget(self.btn_play)
@@ -185,7 +185,7 @@ class ThirdOctaveWidget(QWidget):
         
         band_layout.addLayout(btn_layout)
         
-        self.btn_export_all = QPushButton("Alle Bänder exportieren...")
+        self.btn_export_all = QPushButton("Export All Bands...")
         self.btn_export_all.clicked.connect(self._export_all_bands)
         self.btn_export_all.setEnabled(False)
         band_layout.addWidget(self.btn_export_all)
@@ -235,7 +235,7 @@ class ThirdOctaveWidget(QWidget):
         db_layout.addStretch()
         
         heatmap_layout.addLayout(db_layout)
-        viz_tabs.addTab(heatmap_widget, "Alle Bänder (Heatmap)")
+        viz_tabs.addTab(heatmap_widget, "All Bands (Heatmap)")
         
         # Tab 2: Single band view
         single_widget = QWidget()
@@ -243,24 +243,24 @@ class ThirdOctaveWidget(QWidget):
         single_layout.setContentsMargins(0, 0, 0, 0)
         
         # Plot for filtered signal
-        self.signal_plot = pg.PlotWidget(title="Gefiltertes Signal")
+        self.signal_plot = pg.PlotWidget(title="Filtered Signal")
         self.signal_plot.setBackground('#1a1a2e')
         self.signal_plot.setLabel('left', 'Amplitude')
-        self.signal_plot.setLabel('bottom', 'Zeit', units='s')
+        self.signal_plot.setLabel('bottom', 'Time', units='s')
         self.signal_curve = self.signal_plot.plot(pen=pg.mkPen('#4cc9f0', width=1))
         single_layout.addWidget(self.signal_plot)
         
         # Plot for envelope/impulse response
-        self.envelope_plot = pg.PlotWidget(title="Hüllkurve (Impulsantwort)")
+        self.envelope_plot = pg.PlotWidget(title="Envelope (Impulse Response)")
         self.envelope_plot.setBackground('#1a1a2e')
         self.envelope_plot.setLabel('left', 'Amplitude')
-        self.envelope_plot.setLabel('bottom', 'Zeit', units='s')
+        self.envelope_plot.setLabel('bottom', 'Time', units='s')
         self.envelope_curve = self.envelope_plot.plot(pen=pg.mkPen('#f72585', width=2))
         single_layout.addWidget(self.envelope_plot)
         
         # Level display toggle
         level_layout = QHBoxLayout()
-        level_layout.addWidget(QLabel("Darstellung:"))
+        level_layout.addWidget(QLabel("Display:"))
         self.level_combo = QComboBox()
         self.level_combo.addItems(["Linear", "dB"])
         self.level_combo.currentTextChanged.connect(self._update_single_band_view)
@@ -272,28 +272,28 @@ class ThirdOctaveWidget(QWidget):
         level_layout.addWidget(self.band_info_label)
         
         single_layout.addLayout(level_layout)
-        viz_tabs.addTab(single_widget, "Einzelband")
+        viz_tabs.addTab(single_widget, "Single Band")
         
         # Tab 3: Filter information
         info_widget = QWidget()
         info_layout = QVBoxLayout(info_widget)
         
-        self.filter_info_text = pg.PlotWidget(title="Frequenzgang des Filters")
+        self.filter_info_text = pg.PlotWidget(title="Filter Frequency Response")
         self.filter_info_text.setBackground('#1a1a2e')
         self.filter_info_text.setLabel('left', 'Magnitude', units='dB')
-        self.filter_info_text.setLabel('bottom', 'Frequenz', units='Hz')
+        self.filter_info_text.setLabel('bottom', 'Frequency', units='Hz')
         self.filter_info_text.setLogMode(x=True, y=False)
         self.filter_mag_curve = self.filter_info_text.plot(pen=pg.mkPen('#4cc9f0', width=2))
         info_layout.addWidget(self.filter_info_text)
         
         self.filter_details_label = QLabel(
-            "Wählen Sie ein Terzband aus der Liste,\n"
-            "um die Filtercharakteristik anzuzeigen."
+            "Select a third-octave band from the list\n"
+            "to display the filter characteristics."
         )
         self.filter_details_label.setStyleSheet("font-family: monospace; padding: 8px;")
         info_layout.addWidget(self.filter_details_label)
         
-        viz_tabs.addTab(info_widget, "Filterinfo")
+        viz_tabs.addTab(info_widget, "Filter Info")
         
         splitter.addWidget(viz_tabs)
         splitter.setSizes([200, 600])
