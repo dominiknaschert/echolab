@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTabWidget, QFileDialog, QMessageBox, QLabel,
     QStatusBar, QApplication, QPushButton, QFrame,
-    QComboBox, QSplitter, QSpinBox, QListWidget,
+    QComboBox, QSplitter, QListWidget,
     QListWidgetItem, QProgressBar,
 )
 from PySide6.QtCore import Qt, QSettings, Signal, Slot, QThread
@@ -199,12 +199,12 @@ class MainWindow(QMainWindow):
         control_layout.addStretch()
         
         # Buttons at top right
-        self.btn_play_selection = QPushButton("▶ Play")
+        self.btn_play_selection = QPushButton("Play")
         self.btn_play_selection.clicked.connect(self._play_selection)
         self.btn_play_selection.setEnabled(False)
         control_layout.addWidget(self.btn_play_selection)
         
-        self.btn_stop_selection = QPushButton("■ Stop")
+        self.btn_stop_selection = QPushButton("Stop")
         self.btn_stop_selection.clicked.connect(self._stop_selection_playback)
         self.btn_stop_selection.setEnabled(False)
         control_layout.addWidget(self.btn_stop_selection)
@@ -359,7 +359,7 @@ class MainWindow(QMainWindow):
         # Controls
         terz_controls = QHBoxLayout()
         
-        self.btn_analyze = QPushButton("▶ Start Third-Octave Analysis")
+        self.btn_analyze = QPushButton("Start Third-Octave Analysis")
         self.btn_analyze.clicked.connect(self._start_analysis)
         self.btn_analyze.setEnabled(False)
         terz_controls.addWidget(self.btn_analyze)
@@ -371,17 +371,17 @@ class MainWindow(QMainWindow):
         
         terz_controls.addStretch()
         
-        self.btn_play = QPushButton("▶ Play")
+        self.btn_play = QPushButton("Play")
         self.btn_play.clicked.connect(self._play_band)
         self.btn_play.setEnabled(False)
         terz_controls.addWidget(self.btn_play)
         
-        self.btn_stop = QPushButton("■ Stop")
+        self.btn_stop = QPushButton("Stop")
         self.btn_stop.clicked.connect(self._stop_playback)
         self.btn_stop.setEnabled(False)
         terz_controls.addWidget(self.btn_stop)
         
-        self.btn_export = QPushButton("💾 Export")
+        self.btn_export = QPushButton("Export")
         self.btn_export.clicked.connect(self._export_band)
         self.btn_export.setEnabled(False)
         terz_controls.addWidget(self.btn_export)
@@ -423,7 +423,7 @@ class MainWindow(QMainWindow):
         # Controls
         flutter_controls = QHBoxLayout()
         
-        self.btn_flutter_analyze = QPushButton("▶ Room-Analysis")
+        self.btn_flutter_analyze = QPushButton("Room-Analysis")
         self.btn_flutter_analyze.clicked.connect(self._start_flutter_analysis)
         self.btn_flutter_analyze.setEnabled(False)
         flutter_controls.addWidget(self.btn_flutter_analyze)
@@ -911,7 +911,7 @@ class MainWindow(QMainWindow):
             self._band_stream = sd.play(faded_data.astype(np.float32), band.sample_rate)
             
             self.btn_stop.setEnabled(True)
-            self.status_label.setText(f"▶ Playing {format_frequency(band.center_frequency)}...")
+            self.status_label.setText(f"Playing {format_frequency(band.center_frequency)}...")
             
         except Exception as e:
             QMessageBox.warning(self, "Playback Error", str(e))
@@ -964,7 +964,7 @@ class MainWindow(QMainWindow):
             self.btn_play_selection.setEnabled(False)
             self.btn_stop_selection.setEnabled(True)
             duration = self._selection_end - self._selection_start
-            self.status_label.setText(f"▶ Playing selected region ({format_time(duration)})")
+            self.status_label.setText(f"Playing selected region ({format_time(duration)})")
             
         except Exception as e:
             QMessageBox.warning(self, "Playback Error", str(e))

@@ -173,12 +173,12 @@ class ThirdOctaveWidget(QWidget):
         self.btn_export.setEnabled(False)
         btn_layout.addWidget(self.btn_export)
         
-        self.btn_play = QPushButton("▶ Play")
+        self.btn_play = QPushButton("Play")
         self.btn_play.clicked.connect(self._play_band)
         self.btn_play.setEnabled(False)
         btn_layout.addWidget(self.btn_play)
         
-        self.btn_stop = QPushButton("■ Stop")
+        self.btn_stop = QPushButton("Stop")
         self.btn_stop.clicked.connect(self._stop_playback)
         self.btn_stop.setEnabled(False)
         btn_layout.addWidget(self.btn_stop)
