@@ -31,10 +31,10 @@ a = Analysis(
         'sounddevice',
         'librosa',
         'audioread',
-        # PyQt6 plugins
-        'PyQt6.QtCore',
-        'PyQt6.QtGui',
-        'PyQt6.QtWidgets',
+        # PySide6 plugins
+        'PySide6.QtCore',
+        'PySide6.QtGui',
+        'PySide6.QtWidgets',
     ],
     hookspath=[],
     hooksconfig={},
