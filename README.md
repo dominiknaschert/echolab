@@ -1,6 +1,6 @@
-# Echolab
+# Introduction
 
-**Echolab** is an audio analysis tool focused on time‑dependent third‑octave‑band impulse responses for improved diagnosis of flutter echoes. It is particularly suited for room acoustics investigations based on existing RIR.
+**Echolab** is an analysis tool for the detection of flutter echoes. It uses room impulse responses to visualize flutter echoes in the time domain. In addition to the visual time-domain analysis, the tool implements the detection algorithm presented by Schanda et al. (DAGA 2023). The algorithm identifies repetition frequencies using autocorrelation and calculates the corresponding distances.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
