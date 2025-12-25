@@ -41,7 +41,7 @@ class ResamplingDialog(QDialog):
         
         # Warning
         warning = QLabel(
-            "⚠ Channel handling modifies audio data.\n"
+            "Warning: Channel handling modifies audio data.\n"
             "For reproducible analysis, original data should be used."
         )
         warning.setStyleSheet("color: #f0ad4e; padding: 8px;")

@@ -178,48 +178,38 @@ def _load_wav(path: Path) -> AudioFile:
 
 def _load_mp3(path: Path) -> AudioFile:
     """
-    Load MP3 file with pydub.
+    Load MP3 file with librosa/audioread.
     
-    Requires ffmpeg in system PATH for decoding.
-    If ffmpeg is not available, an error is raised.
+    librosa uses audioread as backend for MP3 decoding.
     """
     try:
-        from pydub import AudioSegment
+        import librosa
     except ImportError:
-        raise ImportError("pydub is not installed. Please install with 'pip install pydub'.")
+        raise ImportError(
+            "librosa is not installed. Please install with 'pip install librosa'.\n"
+            "Note: librosa requires audioread for MP3 support."
+        )
     
     try:
-        audio = AudioSegment.from_mp3(path)
+        # Load with librosa (uses audioread backend for MP3)
+        data, sample_rate = librosa.load(path, sr=None, mono=False, dtype=np.float64)
     except Exception as e:
         raise RuntimeError(
             f"MP3 could not be loaded: {e}\n"
-            "Please ensure ffmpeg is installed:\n"
-            "  macOS: brew install ffmpeg\n"
-            "  Windows: https://ffmpeg.org/download.html"
+            "Please ensure librosa and audioread are installed:\n"
+            "  pip install librosa audioread"
         )
     
-    # Extract metadata
-    sample_rate = audio.frame_rate
-    channels = audio.channels
-    
-    # Convert to numpy array
-    samples = np.array(audio.get_array_of_samples())
-    
-    # Normalize to float64 in range [-1, 1]
-    # pydub returns int16 or int32
-    if audio.sample_width == 2:  # 16-bit
-        samples = samples.astype(np.float64) / 32768.0
-    elif audio.sample_width == 4:  # 32-bit
-        samples = samples.astype(np.float64) / 2147483648.0
-    else:  # 8-bit
-        samples = (samples.astype(np.float64) - 128) / 128.0
-    
-    # Reshape for stereo
-    if channels == 2:
-        samples = samples.reshape(-1, 2)
-        num_samples = samples.shape[0]
+    # librosa returns mono as 1D, stereo as 2D (samples, channels)
+    if data.ndim == 1:
+        channels = 1
+        num_samples = len(data)
     else:
-        num_samples = len(samples)
+        num_samples, channels = data.shape
+        # librosa returns (channels, samples) for multi-channel, transpose to (samples, channels)
+        if channels > 1 and num_samples < channels:
+            data = data.T
+            num_samples, channels = data.shape
     
     format_info = {
         "format": "MP3",
@@ -228,7 +218,7 @@ def _load_mp3(path: Path) -> AudioFile:
     }
     
     return AudioFile(
-        data=samples,
+        data=data,
         sample_rate=sample_rate,
         channels=channels,
         duration_seconds=num_samples / sample_rate,

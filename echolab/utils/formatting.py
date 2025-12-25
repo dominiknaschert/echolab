@@ -105,25 +105,6 @@ def format_sample_rate(sr: int) -> str:
         return f"{sr / 1000:.1f} kHz"
 
 
-def format_duration(seconds: float) -> str:
-    """
-    Format duration for display.
-    
-    Args:
-        seconds: Duration in seconds
-        
-    Returns:
-        Formatted string (e.g. "3:45.2" or "0:01.5")
-    """
-    minutes = int(seconds // 60)
-    secs = seconds % 60
-    
-    if minutes > 0:
-        return f"{minutes}:{secs:05.2f}"
-    else:
-        return f"0:{secs:05.2f}"
-
-
 def format_channels(num_channels: int) -> str:
     """
     Format channel count.
