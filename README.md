@@ -1,54 +1,58 @@
-Echolab
+# Echolab
 
-Audio file analysis tool with a focus on time-dependent third-octave-band impulse responses for improved diagnosis of flutter echoes.
+**Echolab** is an audio analysis tool focused on time‑dependent third‑octave‑band impulse responses for improved diagnosis of flutter echoes. It is particularly suited for room acoustics investigations based on existing RIR.
 
-The tool is designed to detect flutter echoes from audio recordings. For an imported audio file, third-octave-band impulse responses can be generated. These allow straightforward identification of the third-octave bands in which flutter echoes occur. The third-octave-band impulse responses can be listend back to or exported as WAV files.
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-<img width="994" height="736" alt="Image" src="https://github.com/user-attachments/assets/2335b1ac-ab21-4697-87bb-a3e05fa803fb" />
+## Features
 
-<img width="999" height="738" alt="Image" src="https://github.com/user-attachments/assets/94a48b2e-38ba-4bc7-b449-a2bd680be28e" />
+- **Time-domain analysis** with amplitude evolution visualization and parallel spectrogram display
+- **FFT analysis** with configurable window functions and FFT sizes
+- **Third-octave-band impulse responses** generation from imported audio files to identify frequency bands where flutter echoes occur
+- **Audio playback** and **WAV export** of third-octave-band impulse responses
+- **Flutter echo detection** using the method by Schanda et al. (DAGA 2023)
 
-<img width="996" height="736" alt="Image" src="https://github.com/user-attachments/assets/82eebb82-a4db-4030-ab79-07c1a3e71931" />
+## GUI 
 
-## Installation
+<div>
+  <img src="https://github.com/user-attachments/assets/3a00a6c7-4f7b-49f3-b739-c232fa1f1e25" width="49%" alt="Time Domain" />
+  <img src="https://github.com/user-attachments/assets/c79e5253-e4c4-44d7-9824-23a82a63a99f" width="49%" alt="FFT" />
+</div>
+<div>
+  <img src="https://github.com/user-attachments/assets/c54e6ade-30c7-4304-a4b2-53dafc3c16e0" width="49%" alt="Third-Octave" />
+  <img src="https://github.com/user-attachments/assets/cc1efe70-d0e1-4928-9585-ed13896ef194" width="49%" alt="Room Analysis" />
+</div>
 
-### Development Environment
+
+## Usage
+
+1. **Load an audio file**: Use File → Open or drag and drop a WAV/MP3 file
+2. **Select a region**: Click and drag in the time domain view to select the relevant impulse response region for the further analysis.
+3. **Analyze**:
+   - **FFT Analysis**: Switch to the FFT tab to view frequency spectrum
+   - **Third-Octave Bands**: Use the Third-Octave tab to generate filtered impulse responses
+   - **Room Analysis**: Click "Analyze" in the Room Analysis tab to detect flutter echoes
+  
+### Windows Executable
 
 ```bash
-# Python 3.11+ required
-python -m venv venv
-source venv/bin/activate  # Linux/macOS
-# or: venv\Scripts\activate  # Windows
-
-pip install -r requirements.txt
+pyinstaller echolab.specThe 
 ```
+executable will be created in `dist/echolab.exe`.
 
-Creating a Windows Executable
+## Primary References
 
-```bash
-pyinstaller echolab.spec
-# Output in dist/echolab/echolab.exe
-```
+The detection algorithm is based on:
+- **Schanda, J., Hoffbauer, P., & Lachenmayr, G.** (2023). *Flutter Echo Detection in Room Impulse Responses*. DAGA 2023.
 
-Technical Documentation
+## Supporting Literatur 
+- **Halmrast, T.** (2015). "Why Do Flutter Echos Always End Up Around 1-2 kHz?" In: Proceedings of the Institute of Acoustics, Vol. 37 Pt. 3, pp. 395-408.
+- **Kuhl, W.** (1984). Nachhallzeiten schwach gedämpfter geschlossener Wellenzüge. Acustica 55, pp. 187-192.
+- **Lorenz-Kierakiewitz, K.-H.** (2019). Flatterechos und wo sie zu finden sind. In: Fortschritte der Akustik - DAGA 2019.
+- **Rindel, J. H.** (2016). Detection of Colouration in Rooms by use of Cepstrum Technique. In: Fortschritte der Akustik - DAGA 2016.
+- **Yamada, Y., et al.** (2006). A simple method to detect audible echoes in room acoustical design. Applied Acoustics 67(9), pp. 835-848.
 
-Third-Octave Filter Bank (IEC 61260)
+## License
 
-The filter bank uses 6th-order IIR Butterworth filters with:
-	•	Standardized center frequencies according to IEC 61260-1
-	•	Bandwidth: fm × (2^(1/6) − 2^(−1/6))
-	•	Documented phase behavior and group delay
-
-Dependencies
-	•	Python 3.11+
-	•	PyQt6 (GUI)
-	•	numpy, scipy (signal processing)
-	•	pyqtgraph (visualization)
-	•	soundfile (WAV I/O)
-	•	librosa / audioread (audio decoding)
-	•	sounddevice (playback)
-
-License
-
-MIT License
-
+[MIT](https://choosealicense.com/licenses/mit/)
